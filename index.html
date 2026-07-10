@@ -108,22 +108,57 @@
     top:0.03em;
     width:0.145em;
     height:0.145em;
+    margin-left:-0.0725em;
+    margin-top:-0.0725em;
     border-radius:50%;
     background:var(--blue);
-    transform:translate(-50%,-50%) scale(0);
     box-shadow:0 0 0 6px var(--blue-soft);
-    animation: pop .5s cubic-bezier(.34,1.56,.64,1) forwards;
+    transform:scale(0);
+    animation: pop .5s cubic-bezier(.34,1.56,.64,1) forwards,
+               jelly-swap 8s ease-in-out infinite;
   }
 
-  .letter:nth-child(2) .dot{ animation-delay:.55s; }
-  .letter:nth-child(4) .dot{ animation-delay:.7s; }
+  .letter:nth-child(2) .dot{ animation-delay:.55s, 1.4s; }
+  .letter:nth-child(4) .dot{ animation-delay:.7s, 1.4s; }
 
   @keyframes rise{
     to{ opacity:1; transform:translateY(0); }
   }
 
   @keyframes pop{
-    to{ transform:translate(-50%,-50%) scale(1); }
+    to{ transform:scale(1); }
+  }
+
+  /* the two i-dots swap places like jelly: windup, stretch across,
+     squash on arrival, hold 3s, then reverse the trip and hold again */
+  @keyframes jelly-swap{
+    0%, 37.5%{
+      transform: translateX(0) scale(1,1);
+    }
+    40%{
+      transform: translateX(calc(var(--dx) * -0.06)) scale(1.35,0.68);
+    }
+    45%{
+      transform: translateX(calc(var(--dx) * 0.45)) scale(0.7,1.35);
+    }
+    50%{
+      transform: translateX(calc(var(--dx) * 1.08)) scale(1.32,0.72);
+    }
+    53.5%{
+      transform: translateX(calc(var(--dx) * 0.95)) scale(0.85,1.18);
+    }
+    56%, 93.5%{
+      transform: translateX(var(--dx)) scale(1,1);
+    }
+    96%{
+      transform: translateX(calc(var(--dx) * 0.94)) scale(1.32,0.72);
+    }
+    98.5%{
+      transform: translateX(calc(var(--dx) * 0.5)) scale(0.7,1.35);
+    }
+    100%{
+      transform: translateX(0) scale(1,1);
+    }
   }
 
   .caption{
@@ -171,5 +206,24 @@
     <span class="caption">Programmer</span>
   </div>
 
+  <script>
+    function syncDotSwapDistance(){
+      var dots = document.querySelectorAll('.dot');
+      if (dots.length < 2) return;
+      var r1 = dots[0].getBoundingClientRect();
+      var r2 = dots[1].getBoundingClientRect();
+      var dx = (r2.left + r2.width / 2) - (r1.left + r1.width / 2);
+      dots[0].style.setProperty('--dx', dx + 'px');
+      dots[1].style.setProperty('--dx', (-dx) + 'px');
+    }
+
+    window.addEventListener('load', syncDotSwapDistance);
+    window.addEventListener('resize', syncDotSwapDistance);
+    if (document.fonts && document.fonts.ready){
+      document.fonts.ready.then(syncDotSwapDistance);
+    }
+    // recalc shortly after paint in case fonts swap late
+    setTimeout(syncDotSwapDistance, 300);
+  </script>
 </body>
 </html>
