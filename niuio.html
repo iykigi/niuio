@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>niuio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0a0a0a;
+    --paper:#fbfbfa;
+    --line:#e7e7e4;
+    --blue:#2f5fe0;
+    --blue-soft:rgba(47,95,224,.16);
+    --muted:#8a8a86;
+  }
+
+  *{ box-sizing:border-box; }
+
+  html,body{
+    height:100%;
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    overflow:hidden;
+  }
+
+  body{
+    position:relative;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  /* faint grid, standard shadcn-ish backdrop but kept quiet */
+  .grid-bg{
+    position:absolute;
+    inset:0;
+    background-image:
+      linear-gradient(to right, var(--line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+    background-size: 44px 44px;
+    -webkit-mask-image: radial-gradient(ellipse 60% 55% at 50% 50%, black 10%, transparent 75%);
+            mask-image: radial-gradient(ellipse 60% 55% at 50% 50%, black 10%, transparent 75%);
+    opacity:.7;
+  }
+
+  .glow{
+    position:absolute;
+    width:640px;
+    height:640px;
+    left:50%;
+    top:50%;
+    transform:translate(-50%,-50%);
+    background: radial-gradient(circle, var(--blue-soft) 0%, transparent 65%);
+    filter: blur(10px);
+    pointer-events:none;
+  }
+
+  .stage{
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:22px;
+    padding:64px 72px;
+  }
+
+  .eyebrow{
+    font-size:12px;
+    letter-spacing:.22em;
+    text-transform:uppercase;
+    color:var(--muted);
+    opacity:0;
+    animation: rise .6s ease forwards .15s;
+  }
+
+  .wordmark{
+    display:flex;
+    line-height:1;
+    user-select:none;
+  }
+
+  .letter{
+    position:relative;
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:700;
+    font-size:clamp(64px, 15vw, 168px);
+    color:var(--ink);
+    letter-spacing:-0.02em;
+    opacity:0;
+    transform:translateY(18px);
+    animation: rise .68s cubic-bezier(.2,.8,.2,1) forwards;
+  }
+
+  .letter:nth-child(1){ animation-delay:.05s; }
+  .letter:nth-child(2){ animation-delay:.12s; }
+  .letter:nth-child(3){ animation-delay:.19s; }
+  .letter:nth-child(4){ animation-delay:.26s; }
+  .letter:nth-child(5){ animation-delay:.33s; }
+
+  .dot{
+    position:absolute;
+    left:50%;
+    top:0.03em;
+    width:0.145em;
+    height:0.145em;
+    border-radius:50%;
+    background:var(--blue);
+    transform:translate(-50%,-50%) scale(0);
+    box-shadow:0 0 0 6px var(--blue-soft);
+    animation: pop .5s cubic-bezier(.34,1.56,.64,1) forwards;
+  }
+
+  .letter:nth-child(2) .dot{ animation-delay:.55s; }
+  .letter:nth-child(4) .dot{ animation-delay:.7s; }
+
+  @keyframes rise{
+    to{ opacity:1; transform:translateY(0); }
+  }
+
+  @keyframes pop{
+    to{ transform:translate(-50%,-50%) scale(1); }
+  }
+
+  .caption{
+    font-size:13px;
+    color:var(--muted);
+    letter-spacing:.01em;
+    opacity:0;
+    animation: rise .6s ease forwards .95s;
+  }
+
+  .caption b{
+    color:var(--ink);
+    font-weight:500;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .letter, .dot, .eyebrow, .caption{
+      animation:none !important;
+      opacity:1 !important;
+      transform:none !important;
+    }
+  }
+
+  @media (max-width:480px){
+    .stage{ padding:40px 24px; gap:16px; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="grid-bg"></div>
+  <div class="glow"></div>
+
+  <div class="stage">
+    <span class="eyebrow">niuio.org</span>
+
+    <div class="wordmark" aria-label="niuio">
+      <span class="letter">n</span>
+      <span class="letter">ı<span class="dot"></span></span>
+      <span class="letter">u</span>
+      <span class="letter">ı<span class="dot"></span></span>
+      <span class="letter">o</span>
+    </div>
+
+    <span class="caption">Programmer</span>
+  </div>
+
+</body>
+</html>
