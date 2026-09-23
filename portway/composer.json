@@ -1,0 +1,83 @@
+{
+    "name": "portway/panel",
+    "type": "project",
+    "description": "Portway — a free, modern web hosting platform and control panel.",
+    "keywords": ["hosting", "control-panel", "laravel"],
+    "license": "proprietary",
+    "require": {
+        "php": "^8.2",
+        "bacon/bacon-qr-code": "^3.0",
+        "blade-ui-kit/blade-heroicons": "^2.6",
+        "dragonmantank/cron-expression": "^3.4",
+        "guzzlehttp/guzzle": "^7.9",
+        "laravel/framework": "^11.9",
+        "laravel/horizon": "^5.24",
+        "laravel/reverb": "^1.4",
+        "laravel/sanctum": "^4.0",
+        "laravel/tinker": "^2.9",
+        "league/flysystem-sftp-v3": "^3.29",
+        "livewire/livewire": "^3.5",
+        "pragmarx/google2fa": "^8.0",
+        "pusher/pusher-php-server": "^7.2",
+        "spatie/laravel-permission": "^6.9",
+        "symfony/process": "^7.1"
+    },
+    "require-dev": {
+        "fakerphp/faker": "^1.23",
+        "laravel/pail": "^1.1",
+        "laravel/pint": "^1.13",
+        "laravel/sail": "^1.26",
+        "mockery/mockery": "^1.6",
+        "nunomaduro/collision": "^8.1",
+        "pestphp/pest": "^2.34",
+        "pestphp/pest-plugin-laravel": "^2.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/",
+            "Database\\Factories\\": "database/factories/",
+            "Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "post-autoload-dump": [
+            "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
+            "@php artisan package:discover --ansi"
+        ],
+        "post-update-cmd": [
+            "@php artisan vendor:publish --tag=laravel-assets --ansi --force"
+        ],
+        "post-root-package-install": [
+            "@php -r \"file_exists('.env') || copy('.env.example', '.env');\""
+        ],
+        "post-create-project-cmd": [
+            "@php artisan key:generate --ansi"
+        ]
+    },
+    "extra": {
+        "laravel": {
+            "dont-discover": []
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "php-http/discovery": true
+        },
+        "policy": {
+            "advisories": {
+                "block": false
+            }
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

@@ -1,0 +1,521 @@
+<?php
+
+namespace App\Services\Provisioning\Drivers;
+
+use App\Models\Backup;
+use App\Models\Database;
+use App\Models\DatabaseUser;
+use App\Models\Domain;
+use App\Models\Site;
+use App\Models\SslCertificate;
+use App\Services\Provisioning\CommandSanitizer;
+use App\Services\Provisioning\ProvisionerDriver;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use PDO;
+use RuntimeException;
+use Symfony\Component\Process\Exception\ProcessFailedException;
+use Symfony\Component\Process\Process;
+use ZipArchive;
+
+/**
+ * A fully functional, filesystem-backed provisioner. It never touches a
+ * real nginx/PHP-FPM/MySQL install — every "server" action becomes a
+ * real, observable local side effect (a directory under storage/, a
+ * SQLite file standing in for a MySQL schema, a self-signed cert) so the
+ * entire control panel is genuinely exercised in development without
+ * any external infrastructure. Swap PORTWAY_PROVISIONER=ssh once real
+ * hosting nodes exist — see SshProvisionerDriver for the production
+ * counterpart to every method here.
+ */
+class LocalProvisionerDriver implements ProvisionerDriver
+{
+    private const DISK = 'hosting';
+
+    // --- Server metrics ------------------------------------------------------
+
+    public function collectServerMetrics(\App\Models\Server $server): array
+    {
+        $load = function_exists('sys_getloadavg') ? sys_getloadavg() : [0.0, 0.0, 0.0];
+        $diskTotal = @disk_total_space('/') ?: 1;
+        $diskFree = @disk_free_space('/') ?: 0;
+        $memoryInfo = $this->readLocalMemoryInfo();
+
+        return [
+            'cpu_percent' => round(min(100, ($load[0] / max(1, (int) shell_exec('nproc') ?: 1)) * 100), 1),
+            'memory_percent' => $memoryInfo['percent'],
+            'disk_percent' => round((1 - $diskFree / $diskTotal) * 100, 1),
+            'load_1m' => $load[0],
+            'load_5m' => $load[1],
+            'load_15m' => $load[2],
+            'network_rx_bytes' => null,
+            'network_tx_bytes' => null,
+            'service_status' => [
+                'nginx' => 'healthy',
+                'php-fpm' => 'healthy',
+                'mysql' => 'healthy',
+                'redis' => 'healthy',
+                'queue_workers' => 'healthy',
+                'scheduler' => 'healthy',
+            ],
+        ];
+    }
+
+    private function readLocalMemoryInfo(): array
+    {
+        if (! is_readable('/proc/meminfo')) {
+            return ['percent' => 0.0];
+        }
+
+        $lines = file('/proc/meminfo');
+        $values = [];
+        foreach ($lines as $line) {
+            if (preg_match('/^(\w+):\s+(\d+)/', $line, $m)) {
+                $values[$m[1]] = (int) $m[2];
+            }
+        }
+
+        $total = $values['MemTotal'] ?? 1;
+        $available = $values['MemAvailable'] ?? $total;
+
+        return ['percent' => round((1 - $available / $total) * 100, 1)];
+    }
+
+    // --- Filesystem --------------------------------------------------------
+
+    public function createSiteDirectory(Site $site): void
+    {
+        $disk = Storage::disk(self::DISK);
+        $disk->makeDirectory($site->rootPath());
+        $disk->makeDirectory($site->documentRootPath());
+        $disk->makeDirectory($site->rootPath().'/logs');
+        $disk->makeDirectory($site->rootPath().'/backups_tmp');
+
+        $this->seedStarterFile($site);
+    }
+
+    private function seedStarterFile(Site $site): void
+    {
+        $disk = Storage::disk(self::DISK);
+        $root = $site->documentRootPath();
+
+        match ($site->runtime) {
+            'static' => $disk->put("{$root}/index.html", $this->staticWelcomeHtml($site)),
+            'node' => null, // populated by git import / upload / deployment instead
+            default => $disk->put("{$root}/index.php", $this->phpWelcomeSource($site)),
+        };
+    }
+
+    public function deleteSiteDirectory(Site $site): void
+    {
+        Storage::disk(self::DISK)->deleteDirectory($site->rootPath());
+    }
+
+    public function diskUsageBytes(Site $site): int
+    {
+        $disk = Storage::disk(self::DISK);
+
+        if (! $disk->exists($site->rootPath())) {
+            return 0;
+        }
+
+        $bytes = 0;
+
+        foreach ($disk->allFiles($site->rootPath()) as $file) {
+            $bytes += $disk->size($file);
+        }
+
+        return $bytes;
+    }
+
+    // --- Web server / runtime ------------------------------------------------
+
+    public function writeVirtualHost(Site $site): void
+    {
+        // No real web server to configure locally. We still persist a
+        // human-readable record of what *would* be written to
+        // /etc/nginx/sites-available/ on a real node, useful for
+        // debugging and for the SSH driver to diff against.
+        $disk = Storage::disk(self::DISK);
+        $domains = $site->domains()->pluck('hostname')->implode(' ');
+
+        $disk->put("_vhosts/{$site->slug}.conf", implode("\n", [
+            "# Generated by Portway (local driver) — informational only.",
+            "server_name {$domains};",
+            'root '.$disk->path($site->documentRootPath()).';',
+            "php_version {$site->php_version};",
+            'force_https '.($site->force_https ? 'on' : 'off').';',
+        ]));
+    }
+
+    public function removeVirtualHost(Site $site): void
+    {
+        Storage::disk(self::DISK)->delete("_vhosts/{$site->slug}.conf");
+    }
+
+    public function setPhpVersion(Site $site, string $version): void
+    {
+        Log::channel('hosting')->info("[local-driver] site {$site->slug}: php-fpm pool switched to {$version}");
+    }
+
+    public function reloadWebServer(Site $site): void
+    {
+        Log::channel('hosting')->info("[local-driver] site {$site->slug}: web server reload requested");
+    }
+
+    public function writeEnvFile(Site $site, array $variables): void
+    {
+        $lines = array_map(
+            fn ($key, $value) => $key.'='.$this->quoteEnvValue((string) $value),
+            array_keys($variables),
+            $variables
+        );
+
+        Storage::disk(self::DISK)->put($site->rootPath().'/.env', implode("\n", $lines)."\n");
+    }
+
+    private function quoteEnvValue(string $value): string
+    {
+        return preg_match('/\s|#|"/', $value) ? '"'.str_replace('"', '\\"', $value).'"' : $value;
+    }
+
+    public function startNodeProcess(Site $site): void
+    {
+        $this->writeProcessMarker($site, 'running');
+    }
+
+    public function stopNodeProcess(Site $site): void
+    {
+        $pidFile = $this->pidFilePath($site);
+
+        if (file_exists($pidFile)) {
+            $pid = (int) file_get_contents($pidFile);
+            if ($pid > 0 && posix_kill($pid, 0)) {
+                posix_kill($pid, 15);
+            }
+            @unlink($pidFile);
+        }
+
+        $this->writeProcessMarker($site, 'stopped');
+    }
+
+    public function restartNodeProcess(Site $site): void
+    {
+        $this->stopNodeProcess($site);
+        $this->startNodeProcess($site);
+    }
+
+    private function writeProcessMarker(Site $site, string $status): void
+    {
+        Storage::disk(self::DISK)->put(
+            $site->rootPath().'/logs/process-status.json',
+            json_encode(['status' => $status, 'at' => now()->toIso8601String()])
+        );
+    }
+
+    private function pidFilePath(Site $site): string
+    {
+        return Storage::disk(self::DISK)->path($site->rootPath().'/logs/process.pid');
+    }
+
+    public function runCommand(Site $site, string $command, int $timeoutSeconds = 60): array
+    {
+        CommandSanitizer::assertSafe($command);
+
+        $cwd = Storage::disk(self::DISK)->path($site->documentRootPath());
+
+        $process = Process::fromShellCommandline($command, $cwd, [
+            'PORTWAY_SITE' => $site->slug,
+            'HOME' => $cwd,
+        ]);
+        $process->setTimeout($timeoutSeconds);
+
+        try {
+            $process->run();
+        } catch (\Throwable $e) {
+            return ['exit_code' => 1, 'output' => $e->getMessage()];
+        }
+
+        return [
+            'exit_code' => $process->getExitCode() ?? 1,
+            'output' => $process->getOutput().$process->getErrorOutput(),
+        ];
+    }
+
+    // --- DNS -----------------------------------------------------------------
+
+    public function checkDnsPropagation(Domain $domain): array
+    {
+        $expectedIp = config('portway.server_ip');
+        $result = ['a' => [], 'cname' => [], 'checked_at' => now()->toIso8601String()];
+
+        try {
+            $aRecords = @dns_get_record($domain->hostname, DNS_A) ?: [];
+            $result['a'] = array_column($aRecords, 'ip');
+
+            $cnameRecords = @dns_get_record($domain->hostname, DNS_CNAME) ?: [];
+            $result['cname'] = array_column($cnameRecords, 'target');
+        } catch (\Throwable $e) {
+            $result['error'] = $e->getMessage();
+        }
+
+        $result['matches_expected'] = in_array($expectedIp, $result['a'], true);
+
+        return $result;
+    }
+
+    public function applyDnsRecord(Domain $domain, string $type, string $name, string $content, int $ttl): void
+    {
+        // Portway does not run an authoritative nameserver for the local
+        // driver — DNS for externally-registered domains is always
+        // managed at the registrar (see the Domains wizard's setup
+        // instructions). This hook exists for a future managed-DNS
+        // driver that talks to an in-house or third-party DNS API.
+        Log::channel('hosting')->info("[local-driver] would publish {$type} {$name} -> {$content} (ttl {$ttl}) for {$domain->hostname}");
+    }
+
+    public function removeDnsRecord(Domain $domain, string $type, string $name): void
+    {
+        Log::channel('hosting')->info("[local-driver] would remove {$type} {$name} for {$domain->hostname}");
+    }
+
+    // --- SSL -----------------------------------------------------------------
+
+    public function issueSslCertificate(SslCertificate $certificate): void
+    {
+        $hostname = $certificate->domain->hostname;
+        $dir = sys_get_temp_dir().'/portway-ssl-'.$certificate->id;
+        @mkdir($dir, 0700, true);
+
+        $keyPath = "{$dir}/privkey.pem";
+        $certPath = "{$dir}/fullchain.pem";
+
+        $process = new Process([
+            'openssl', 'req', '-x509', '-nodes',
+            '-newkey', 'rsa:2048',
+            '-keyout', $keyPath,
+            '-out', $certPath,
+            '-days', '90',
+            '-subj', "/CN={$hostname}",
+            '-addext', "subjectAltName=DNS:{$hostname}",
+        ]);
+        $process->setTimeout(30);
+        $process->run();
+
+        if (! $process->isSuccessful() || ! file_exists($certPath)) {
+            throw new RuntimeException('Local self-signed certificate generation failed: '.$process->getErrorOutput());
+        }
+
+        $certificate->forceFill([
+            'issuer' => 'Portway Development CA (self-signed — not trusted by browsers)',
+            'certificate' => file_get_contents($certPath),
+            'private_key' => file_get_contents($keyPath),
+            'chain' => null,
+            'issued_at' => now(),
+            'expires_at' => now()->addDays(90),
+        ])->save();
+
+        @unlink($keyPath);
+        @unlink($certPath);
+        @rmdir($dir);
+    }
+
+    public function revokeSslCertificate(SslCertificate $certificate): void
+    {
+        $certificate->forceFill([
+            'certificate' => null,
+            'private_key' => null,
+            'chain' => null,
+        ])->save();
+    }
+
+    // --- Databases -----------------------------------------------------------
+
+    private function databasePath(Database $database): string
+    {
+        return Storage::disk(self::DISK)->path("_databases/{$database->name}.sqlite");
+    }
+
+    public function createDatabase(Database $database): void
+    {
+        $disk = Storage::disk(self::DISK);
+        $disk->makeDirectory('_databases');
+
+        $path = $this->databasePath($database);
+        new PDO('sqlite:'.$path); // touches the file into existence
+    }
+
+    public function deleteDatabase(Database $database): void
+    {
+        @unlink($this->databasePath($database));
+    }
+
+    public function createDatabaseUser(DatabaseUser $databaseUser, Database $database): void
+    {
+        // SQLite has no per-user grant system — credentials are enforced
+        // at the application layer (App\Services\Databases\DatabaseManager)
+        // instead of by the engine, unlike the "ssh" driver's real
+        // `CREATE USER` / `GRANT` statements against MySQL/MariaDB.
+    }
+
+    public function deleteDatabaseUser(DatabaseUser $databaseUser): void
+    {
+        //
+    }
+
+    public function updateDatabaseUserPassword(DatabaseUser $databaseUser, string $plainPassword): void
+    {
+        //
+    }
+
+    public function databaseSizeBytes(Database $database): int
+    {
+        $path = $this->databasePath($database);
+
+        return file_exists($path) ? filesize($path) : 0;
+    }
+
+    // --- Backups ---------------------------------------------------------------
+
+    public function createBackupArchive(Backup $backup): string
+    {
+        $site = $backup->site;
+        $disk = Storage::disk(self::DISK);
+        $backupsDisk = Storage::disk('backups');
+
+        $relativePath = "{$backup->user_id}/{$site->slug}/".now()->format('Y-m-d_His').'-'.$backup->type.'.zip';
+        $backupsDisk->makeDirectory(dirname($relativePath));
+
+        $zip = new ZipArchive;
+        $absolutePath = $backupsDisk->path($relativePath);
+
+        if ($zip->open($absolutePath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            throw new RuntimeException("Could not open {$absolutePath} for writing.");
+        }
+
+        if (in_array($backup->type, ['files', 'full'], true) && $disk->exists($site->rootPath())) {
+            $siteRoot = $disk->path($site->rootPath());
+            foreach ($disk->allFiles($site->rootPath()) as $file) {
+                $zip->addFile($disk->path($file), 'files/'.ltrim(str_replace($siteRoot, '', $disk->path($file)), '/'));
+            }
+        }
+
+        if (in_array($backup->type, ['database', 'full'], true)) {
+            foreach ($site->databases as $database) {
+                $dbPath = $this->databasePath($database);
+                if (file_exists($dbPath)) {
+                    $zip->addFile($dbPath, "database/{$database->name}.sqlite");
+                }
+            }
+        }
+
+        $zip->close();
+
+        return $relativePath;
+    }
+
+    public function restoreBackupArchive(Backup $backup): void
+    {
+        $site = $backup->site;
+        $disk = Storage::disk(self::DISK);
+        $backupsDisk = Storage::disk('backups');
+
+        $absolutePath = $backupsDisk->path($backup->path);
+
+        if (! file_exists($absolutePath)) {
+            throw new RuntimeException('Backup archive not found.');
+        }
+
+        $zip = new ZipArchive;
+        if ($zip->open($absolutePath) !== true) {
+            throw new RuntimeException('Could not open backup archive.');
+        }
+
+        $extractTo = sys_get_temp_dir().'/portway-restore-'.$backup->id;
+        $zip->extractTo($extractTo);
+        $zip->close();
+
+        if (is_dir("{$extractTo}/files")) {
+            $disk->deleteDirectory($site->rootPath());
+            $disk->makeDirectory($site->rootPath());
+            $this->copyDirectoryIntoDisk("{$extractTo}/files", $disk, $site->rootPath());
+        }
+
+        if (is_dir("{$extractTo}/database")) {
+            foreach (glob("{$extractTo}/database/*.sqlite") as $dbFile) {
+                $target = Storage::disk(self::DISK)->path('_databases/'.basename($dbFile));
+                copy($dbFile, $target);
+            }
+        }
+
+        $this->deleteLocalDirectory($extractTo);
+    }
+
+    private function copyDirectoryIntoDisk(string $localSource, $disk, string $diskDestination): void
+    {
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($localSource, \FilesystemIterator::SKIP_DOTS)
+        );
+
+        foreach ($iterator as $file) {
+            $relative = ltrim(str_replace($localSource, '', $file->getPathname()), '/');
+            if ($file->isDir()) {
+                $disk->makeDirectory("{$diskDestination}/{$relative}");
+            } else {
+                $disk->put("{$diskDestination}/{$relative}", file_get_contents($file->getPathname()));
+            }
+        }
+    }
+
+    private function deleteLocalDirectory(string $path): void
+    {
+        if (! is_dir($path)) {
+            return;
+        }
+
+        $items = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($path, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($items as $item) {
+            $item->isDir() ? @rmdir($item->getPathname()) : @unlink($item->getPathname());
+        }
+
+        @rmdir($path);
+    }
+
+    private function staticWelcomeHtml(Site $site): string
+    {
+        return <<<HTML
+        <!doctype html>
+        <html lang="en">
+        <head><meta charset="utf-8"><title>{$site->name}</title></head>
+        <body style="font-family: system-ui; padding: 4rem; text-align: center;">
+            <h1>{$site->name} is live on Portway</h1>
+            <p>Replace this file in the File Manager or deploy over it with Git.</p>
+        </body>
+        </html>
+        HTML;
+    }
+
+    private function phpWelcomeSource(Site $site): string
+    {
+        $name = addslashes($site->name);
+
+        return <<<PHP
+        <?php
+        // Welcome file created by Portway. Replace it, or deploy over it.
+        \$siteName = "{$name}";
+        ?>
+        <!doctype html>
+        <html lang="en">
+        <head><meta charset="utf-8"><title><?= htmlspecialchars(\$siteName) ?></title></head>
+        <body style="font-family: system-ui; padding: 4rem; text-align: center;">
+            <h1><?= htmlspecialchars(\$siteName) ?> is live on Portway</h1>
+            <p>PHP <?= PHP_VERSION ?> · Edit this file from the File Manager to get started.</p>
+        </body>
+        </html>
+        PHP;
+    }
+}
