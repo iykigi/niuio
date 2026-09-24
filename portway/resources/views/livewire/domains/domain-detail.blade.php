@@ -9,7 +9,9 @@
         </div>
         <div class="flex gap-2">
             <button wire:click="checkDns" class="btn-secondary"><x-heroicon-o-arrow-path class="h-4 w-4" /> Check DNS</button>
-            <button wire:click="delete" wire:confirm="Disconnect this domain?" class="btn-danger">Disconnect</button>
+            @if ($domain->type !== 'temporary')
+                <button wire:click="delete" wire:confirm="Disconnect this domain?" class="btn-danger">Disconnect</button>
+            @endif
         </div>
     </div>
 

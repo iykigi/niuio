@@ -30,7 +30,7 @@ class BackupApiController extends Controller
         $site = Site::where('user_id', $request->user()->id)->findOrFail($data['site_id']);
         $backup = $service->create($request->user(), $site, $data['type'] ?? 'full', 'manual');
 
-        return BackupResource::make($backup)->response()->setStatusCode(202);
+        return BackupResource::make($backup->fresh())->response()->setStatusCode(202);
     }
 
     public function show(Request $request, Backup $backup)

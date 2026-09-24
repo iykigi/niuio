@@ -3,6 +3,7 @@
 use App\Jobs\ExecuteCronJobJob;
 use App\Models\CronJob;
 use App\Models\Site;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(function () {
@@ -52,4 +53,20 @@ it('only lets the owning user (or the platform) create, edit, or delete their cr
     expect($owner->can('delete', $cronJob))->toBeTrue();
     expect($stranger->can('update', $cronJob))->toBeFalse();
     expect($stranger->can('delete', $cronJob))->toBeFalse();
+});
+
+it('dispatches a cron job that became due since its last run, and skips one that is not due', function () {
+    Bus::fake();
+
+    $this->travelTo(now()->setTime(10, 7, 30));
+
+    // Last ran at 10:00, every 5 minutes → 10:05 has passed without a run.
+    $due = CronJob::factory()->create(['schedule' => '*/5 * * * *', 'preset' => null, 'last_run_at' => now()->setTime(10, 0)]);
+    // Daily at midnight, last ran this morning → nothing to do until tomorrow.
+    $notDue = CronJob::factory()->create(['schedule' => '0 0 * * *', 'preset' => null, 'last_run_at' => now()->setTime(0, 0)]);
+
+    $this->artisan('portway:run-cron-jobs')->assertSuccessful();
+
+    Bus::assertDispatched(ExecuteCronJobJob::class, fn ($job) => $job->cronJob->is($due));
+    Bus::assertNotDispatched(ExecuteCronJobJob::class, fn ($job) => $job->cronJob->is($notDue));
 });

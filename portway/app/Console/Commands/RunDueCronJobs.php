@@ -26,7 +26,9 @@ class RunDueCronJobs extends Command
 
             $reference = $cronJob->last_run_at ?? now()->subMinute();
 
-            if ($expression->isDue(now()) || $expression->getNextRunDate($reference)->lessThanOrEqualTo(now())) {
+            // getNextRunDate() returns a plain DateTime (no Carbon helpers),
+            // so compare from the Carbon side.
+            if ($expression->isDue(now()) || now()->greaterThanOrEqualTo($expression->getNextRunDate($reference))) {
                 ExecuteCronJobJob::dispatch($cronJob)->onQueue('default');
                 $dispatched++;
             }

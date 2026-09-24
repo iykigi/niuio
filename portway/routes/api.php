@@ -16,7 +16,9 @@ use Illuminate\Support\Facades\Route;
  | (e.g. "sites:read", "sites:write") and an optional expiration —
  | see App\Livewire\Security\SecurityCenter for issuing them.
  */
-Route::middleware(['auth:sanctum', 'throttle:api'])->prefix('v1')->name('api.v1.')->group(function () {
+// Rate limiting ("api" limiter, AppServiceProvider) is already applied to
+// the whole api group by throttleApi() in bootstrap/app.php.
+Route::middleware(['auth:sanctum'])->prefix('v1')->name('api.v1.')->group(function () {
     Route::apiResource('sites', SiteApiController::class);
     Route::apiResource('domains', DomainApiController::class);
     Route::apiResource('databases', DatabaseApiController::class);

@@ -34,8 +34,12 @@ class CreateSite extends Component
 
     public function mount(): void
     {
-        $this->phpVersion = config('portway.default_php_version');
-        $this->nodeVersion = config('portway.default_node_version');
+        // The default may have been removed from the admin's list of
+        // available versions; fall back to the first one still offered.
+        $php = config('portway.php_versions');
+        $node = config('portway.node_versions');
+        $this->phpVersion = in_array(config('portway.default_php_version'), $php, true) ? config('portway.default_php_version') : (string) ($php[0] ?? '');
+        $this->nodeVersion = in_array(config('portway.default_node_version'), $node, true) ? config('portway.default_node_version') : (string) ($node[0] ?? '');
     }
 
     public function selectProjectType(string $type): void

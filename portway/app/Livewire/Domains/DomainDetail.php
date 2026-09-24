@@ -113,6 +113,13 @@ class DomainDetail extends Component
     public function delete(): void
     {
         $this->authorize('delete', $this->domain);
+
+        if ($this->domain->type === 'temporary') {
+            $this->dispatch('toast', message: 'The built-in temporary address is removed together with its website.', level: 'warning');
+
+            return;
+        }
+
         $this->domain->delete();
         $this->redirectRoute('domains.index', navigate: true);
     }

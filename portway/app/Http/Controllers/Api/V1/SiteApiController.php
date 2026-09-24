@@ -24,7 +24,7 @@ class SiteApiController extends Controller
 
         $site = $service->create($request->user(), $request->validated());
 
-        return SiteResource::make($site)->response()->setStatusCode(202);
+        return SiteResource::make($site->fresh())->response()->setStatusCode(202);
     }
 
     public function show(Request $request, Site $site)

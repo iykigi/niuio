@@ -23,6 +23,11 @@ class Register extends Component
 
     public bool $terms = false;
 
+    public function mount(): void
+    {
+        abort_unless(config('portway.features.registration_open'), 403, 'Registration is currently closed.');
+    }
+
     public function register(): void
     {
         abort_unless(config('portway.features.registration_open'), 403, 'Registration is currently closed.');

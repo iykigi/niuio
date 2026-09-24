@@ -24,7 +24,7 @@ class DatabaseApiController extends Controller
 
         $result = $service->create($request->user(), $request->validated('label'));
 
-        return DatabaseResource::make($result['database'])->additional([
+        return DatabaseResource::make($result['database']->fresh())->additional([
             'credentials' => [
                 'username' => $result['user']->username,
                 'password' => $result['plain_password'],

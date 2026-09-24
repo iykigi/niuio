@@ -65,10 +65,18 @@ it('refuses registration when the terms checkbox is not accepted', function () {
         ->assertHasErrors(['terms']);
 });
 
-it('blocks registration entirely when the platform has closed registration', function () {
+it('does not even show the sign-up form when the platform has closed registration', function () {
     config(['portway.features.registration_open' => false]);
 
-    Livewire::test(\App\Livewire\Auth\Register::class)
+    $this->get(route('register'))->assertForbidden();
+});
+
+it('blocks registration entirely when the platform closes registration while the form is open', function () {
+    $component = Livewire::test(\App\Livewire\Auth\Register::class);
+
+    config(['portway.features.registration_open' => false]);
+
+    $component
         ->set('name', 'Ada Lovelace')
         ->set('email', 'ada@example.com')
         ->set('password', 'Sup3rSecret!')

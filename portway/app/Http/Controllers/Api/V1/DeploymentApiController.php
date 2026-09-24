@@ -30,7 +30,7 @@ class DeploymentApiController extends Controller
 
         $deployment = $service->deploy($repository, 'manual', $request->user());
 
-        return DeploymentResource::make($deployment)->response()->setStatusCode(202);
+        return DeploymentResource::make($deployment->fresh())->response()->setStatusCode(202);
     }
 
     public function show(Request $request, Deployment $deployment)

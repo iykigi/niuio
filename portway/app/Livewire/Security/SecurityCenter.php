@@ -141,9 +141,21 @@ class SecurityCenter extends Component
         }
 
         Auth::user()->update(['password' => Hash::make($this->newPassword)]);
+        $this->rememberPasswordHashInSession();
 
         $this->reset(['currentPassword', 'newPassword', 'newPassword_confirmation']);
         $this->dispatch('toast', message: 'Password updated.', level: 'success');
+    }
+
+    /**
+     * The app routes run AuthenticateSession, which logs a session out as
+     * soon as the password hash stored in it no longer matches the
+     * user's. Livewire requests don't refresh that copy themselves, so
+     * without this, changing your password would sign *you* out too.
+     */
+    private function rememberPasswordHashInSession(): void
+    {
+        session()->put('password_hash_'.Auth::getDefaultDriver(), Auth::user()->getAuthPassword());
     }
 
     // --- IP blocking -------------------------------------------------------
@@ -154,6 +166,15 @@ class SecurityCenter extends Component
             'blockIp' => ['required', 'ip'],
             'blockReason' => ['nullable', 'string', 'max:255'],
         ]);
+
+        // EnsureIpIsNotBlocked ends the session of any request from a
+        // blocked address, so blocking the one you are on would lock you
+        // out of your own account.
+        if ($this->blockIp === request()->ip()) {
+            $this->addError('blockIp', 'That is the IP address you are using right now — blocking it would lock you out.');
+
+            return;
+        }
 
         BlockedIp::create([
             'user_id' => Auth::id(),
@@ -191,6 +212,7 @@ class SecurityCenter extends Component
         }
 
         Auth::logoutOtherDevices($this->signOutPassword);
+        $this->rememberPasswordHashInSession();
 
         if (config('session.driver') === 'database') {
             DB::table(config('session.table', 'sessions'))

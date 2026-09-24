@@ -42,6 +42,27 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'two_factor_recovery_codes',
     ];
 
+    /**
+     * Account limit columns and the config('portway.defaults.*') value a
+     * new account starts with — read at signup time, so a change made in
+     * Admin > Settings applies to every account created afterwards.
+     */
+    public const DEFAULT_LIMIT_COLUMNS = [
+        'storage_quota_mb', 'bandwidth_quota_mb', 'max_websites', 'max_databases',
+        'max_domains', 'max_cron_jobs', 'max_backups', 'max_email_accounts',
+    ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (User $user) {
+            foreach (self::DEFAULT_LIMIT_COLUMNS as $column) {
+                if ($user->getAttribute($column) === null && config("portway.defaults.{$column}") !== null) {
+                    $user->setAttribute($column, (int) config("portway.defaults.{$column}"));
+                }
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [
