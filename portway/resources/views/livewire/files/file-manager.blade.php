@@ -14,14 +14,18 @@
 
         <div
             wire:ignore
-            x-data="{
-                content: @entangle('editingContent').live,
-                editor: null,
-                extension: '{{ pathinfo($editingPath, PATHINFO_EXTENSION) }}',
-                init() { portwayInitMonaco(this, $el); },
-            }"
+            wire:key="editor-{{ md5($editingPath) }}"
+            x-data="portwayCodeEditor(@entangle('editingContent'), @js(pathinfo($editingPath, PATHINFO_EXTENSION)))"
             class="h-[65vh] overflow-hidden rounded-xl2 border border-surface-200 dark:border-white/10"
-        ></div>
+        >
+            <textarea
+                x-ref="textarea"
+                x-model="content"
+                spellcheck="false"
+                class="h-full w-full resize-none border-0 bg-white p-4 font-mono text-sm text-slate-800 focus:ring-0 dark:bg-surface-900 dark:text-slate-100"
+            ></textarea>
+            <div x-ref="monaco" class="hidden h-full w-full"></div>
+        </div>
     @else
         {{-- Toolbar --}}
         <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -39,7 +43,7 @@
                 <button wire:click="$set('showCreateFile', true)" class="btn-secondary !py-1.5 text-sm"><x-heroicon-o-document-plus class="h-4 w-4" /></button>
                 <label class="btn-secondary cursor-pointer !py-1.5 text-sm">
                     <x-heroicon-o-arrow-up-tray class="h-4 w-4" /> Upload
-                    <input type="file" wire:model="uploads" multiple class="hidden" onchange="$wire.upload()">
+                    <input type="file" wire:model="uploads" multiple class="hidden">
                 </label>
                 @if (! empty($selected))
                     <button wire:click="zipSelected" class="btn-secondary !py-1.5 text-sm"><x-heroicon-o-archive-box class="h-4 w-4" /> Zip</button>
@@ -156,36 +160,3 @@
         </div>
     </x-modal>
 </div>
-
-@once
-    @push('scripts')
-        <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.50.0/min/vs/loader.js"></script>
-        <script>
-            let portwayMonacoLoaderConfigured = false;
-
-            function portwayInitMonaco(component, el) {
-                if (! portwayMonacoLoaderConfigured) {
-                    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.50.0/min/vs' } });
-                    portwayMonacoLoaderConfigured = true;
-                }
-
-                require(['vs/editor/editor.main'], () => {
-                    const languageMap = { php: 'php', js: 'javascript', ts: 'typescript', css: 'css', html: 'html', json: 'json', md: 'markdown', yml: 'yaml', yaml: 'yaml', sql: 'sql' };
-
-                    component.editor = monaco.editor.create(el, {
-                        value: component.content,
-                        language: languageMap[component.extension] || 'plaintext',
-                        theme: document.documentElement.classList.contains('dark') ? 'vs-dark' : 'vs',
-                        automaticLayout: true,
-                        minimap: { enabled: false },
-                        fontSize: 13,
-                    });
-
-                    component.editor.onDidChangeModelContent(() => {
-                        component.content = component.editor.getValue();
-                    });
-                });
-            }
-        </script>
-    @endpush
-@endonce

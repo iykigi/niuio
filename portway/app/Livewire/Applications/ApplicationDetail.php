@@ -128,7 +128,7 @@ class ApplicationDetail extends Component
      * publish: the build goes live only when the owner presses Publish,
      * which is the separate step below.
      */
-    public function upload(ReleaseService $releases): void
+    public function uploadBuild(ReleaseService $releases): void
     {
         $this->authorize('create', Release::class);
         $this->authorize('update', $this->application);

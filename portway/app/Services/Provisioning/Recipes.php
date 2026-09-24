@@ -83,11 +83,11 @@ class Recipes
             return;
         }
 
-        $driver->runCommand($site, sprintf(
-            'git clone --branch %s --single-branch %s .',
-            escapeshellarg($branch),
-            escapeshellarg($url)
-        ), timeoutSeconds: 180);
+        $result = app(\App\Services\Deployments\DeploymentService::class)->checkout($site, $url, $branch);
+
+        if ($result['exit_code'] !== 0) {
+            Log::channel('hosting')->warning("[recipes] {$site->slug} git import failed: {$result['output']}");
+        }
 
         GitRepository::create([
             'site_id' => $site->id,

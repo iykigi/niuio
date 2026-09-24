@@ -47,7 +47,10 @@ class CreateSite extends Component
     public function nextStep(): void
     {
         if ($this->step === 2) {
-            $this->validate(['name' => ['required', 'string', 'min:2', 'max:60']]);
+            $this->validate([
+                'name' => ['required', 'string', 'min:2', 'max:60'],
+                'gitUrl' => ['exclude_unless:projectType,git', 'required', 'url:http,https,ssh,git', 'max:255'],
+            ]);
         }
 
         if ($this->step === 3 && $this->domainChoice === 'custom') {
@@ -66,7 +69,11 @@ class CreateSite extends Component
     {
         $this->validate([
             'name' => ['required', 'string', 'min:2', 'max:60'],
-            'projectType' => ['required', 'string'],
+            'projectType' => ['required', 'string', 'in:'.implode(',', array_keys(config('portway.project_types')))],
+            'gitUrl' => ['exclude_unless:projectType,git', 'required', 'url:http,https,ssh,git', 'max:255'],
+            'gitBranch' => ['exclude_unless:projectType,git', 'required', 'string', 'max:100', 'regex:/^[\w\-.\/]+$/', 'not_regex:/^-/'],
+            'phpVersion' => ['nullable', 'in:'.implode(',', config('portway.php_versions'))],
+            'nodeVersion' => ['nullable', 'in:'.implode(',', config('portway.node_versions'))],
         ]);
 
         $recipe = config("portway.project_types.{$this->projectType}");

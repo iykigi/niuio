@@ -79,10 +79,17 @@ class CommandSanitizer
         }
 
         foreach (self::splitIntoSegments($command) as $segment) {
+            if ($segment === '') {
+                continue;
+            }
+
             $binary = self::firstToken($segment);
 
+            // A segment that doesn't start with a plain program name —
+            // "(whoami)", "{ whoami; }", "\"whoami\"", "\\whoami" — must be
+            // rejected, not skipped: the shell still runs whatever is inside.
             if ($binary === '') {
-                continue;
+                throw new InvalidArgumentException('Command rejected: start each command with the name of an allowed program.');
             }
 
             if (! in_array($binary, self::ALLOWED_BINARIES, true)) {
@@ -128,9 +135,14 @@ class CommandSanitizer
             return '';
         }
 
-        preg_match('/^([A-Za-z0-9_.\/-]+)/', $segment, $matches);
+        // The whole first word must be a plain name/path; anything else in
+        // it (quotes, parentheses, braces, backslashes, "VAR=value") makes
+        // the program the shell will actually run impossible to tell here.
+        if (! preg_match('/^([A-Za-z0-9_.\/-]+)(?:\s|$)/', $segment, $matches)) {
+            return '';
+        }
 
-        $token = $matches[1] ?? '';
+        $token = $matches[1];
 
         // Allow "php artisan migrate" style invocations and paths like
         // ./vendor/bin/pest by comparing only the basename.

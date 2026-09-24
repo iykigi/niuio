@@ -26,7 +26,7 @@ class StoreSiteRequest extends FormRequest
             // this too before the clone actually runs, but rejecting it
             // here gives the user an immediate, specific validation error.
             'git_url' => ['nullable', 'required_if:project_type,git', 'url', 'regex:/^(https?|git|ssh):\/\//i'],
-            'git_branch' => ['nullable', 'string', 'max:100'],
+            'git_branch' => ['nullable', 'string', 'max:100', 'regex:/^[\w\-.\/]+$/', 'not_regex:/^-/'],
             'create_database' => ['nullable', 'boolean'],
         ];
     }

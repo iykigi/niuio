@@ -46,7 +46,7 @@ class GitPanel extends Component
         }
     }
 
-    public function connect(ProvisionerDriver $driver): void
+    public function connect(DeploymentService $deployments): void
     {
         $this->authorize('update', $this->site);
 
@@ -55,19 +55,15 @@ class GitPanel extends Component
         }
 
         $this->validate([
-            'url' => ['required', 'url', 'max:255'],
-            'branch' => ['required', 'string', 'max:100', 'regex:/^[\w\-.\/]+$/'],
+            'url' => ['required', 'url:http,https,ssh,git', 'max:255'],
+            'branch' => ['required', 'string', 'max:100', 'regex:/^[\w\-.\/]+$/', 'not_regex:/^-/'],
         ]);
 
         try {
-            $result = $driver->runCommand($this->site, sprintf(
-                'git clone --branch %s --single-branch %s .',
-                escapeshellarg($this->branch),
-                escapeshellarg($this->url)
-            ), timeoutSeconds: 180);
+            $result = $deployments->checkout($this->site, $this->url, $this->branch);
 
             if ($result['exit_code'] !== 0) {
-                $this->dispatch('toast', message: 'Clone failed: '.trim($result['output']), level: 'danger');
+                $this->dispatch('toast', message: 'Could not fetch the repository: '.\Illuminate\Support\Str::limit(trim($result['output']), 300), level: 'danger');
 
                 return;
             }
@@ -104,10 +100,16 @@ class GitPanel extends Component
 
         $this->authorize('update', $repository);
 
+        $safeCommand = function (string $attribute, mixed $value, \Closure $fail) {
+            if (filled($value) && ! \App\Services\Provisioning\CommandSanitizer::isSafe((string) $value)) {
+                $fail('That command is not allowed by the security sandbox.');
+            }
+        };
+
         $this->validate([
-            'editBranch' => ['required', 'string', 'max:100', 'regex:/^[\w\-.\/]+$/'],
-            'installCommand' => ['nullable', 'string', 'max:255'],
-            'buildCommand' => ['nullable', 'string', 'max:255'],
+            'editBranch' => ['required', 'string', 'max:100', 'regex:/^[\w\-.\/]+$/', 'not_regex:/^-/'],
+            'installCommand' => ['nullable', 'string', 'max:255', $safeCommand],
+            'buildCommand' => ['nullable', 'string', 'max:255', $safeCommand],
         ]);
 
         $repository->update([
@@ -130,9 +132,14 @@ class GitPanel extends Component
 
         $this->authorize('deploy', $repository);
 
-        $service->deploy($repository, 'manual', auth()->user());
+        $deployment = $service->deploy($repository, 'manual', auth()->user());
 
-        $this->dispatch('toast', message: 'Deployment queued.', level: 'success');
+        $status = $deployment->fresh()->status;
+        $this->dispatch('toast', ...match ($status) {
+            'succeeded' => ['message' => 'Deployment finished.', 'level' => 'success'],
+            'failed' => ['message' => 'Deployment failed — open its log for details.', 'level' => 'danger'],
+            default => ['message' => 'Deployment queued.', 'level' => 'success'],
+        });
     }
 
     public function confirmDisconnect(): void

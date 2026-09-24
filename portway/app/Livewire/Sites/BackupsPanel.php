@@ -36,10 +36,15 @@ class BackupsPanel extends Component
         ]);
 
         try {
-            $service->create(auth()->user(), $this->site, $this->type, 'manual');
-            $this->dispatch('toast', message: 'Backup queued.', level: 'success');
+            $backup = $service->create(auth()->user(), $this->site, $this->type, 'manual');
+            $this->dispatch('toast', message: $backup->fresh()->status === BackupStatus::Completed ? 'Backup created.' : 'Backup queued.', level: 'success');
         } catch (QuotaExceededException $e) {
             $this->dispatch('toast', message: $e->getMessage(), level: 'danger');
+        } catch (\Throwable $e) {
+            // With the "sync" queue the job runs inside this request; it has
+            // already marked the backup failed with the reason.
+            report($e);
+            $this->dispatch('toast', message: 'Backup failed: '.$e->getMessage(), level: 'danger');
         }
     }
 
@@ -53,9 +58,18 @@ class BackupsPanel extends Component
         $backup = Backup::where('site_id', $this->site->id)->findOrFail($this->restoreTargetId);
         $this->authorize('restore', $backup);
 
-        $service->restore($backup);
         $this->restoreTargetId = null;
-        $this->dispatch('toast', message: 'Restore started.', level: 'success');
+
+        try {
+            $service->restore($backup);
+        } catch (\Throwable $e) {
+            report($e);
+            $this->dispatch('toast', message: 'Restore failed: '.$e->getMessage(), level: 'danger');
+
+            return;
+        }
+
+        $this->dispatch('toast', message: $backup->fresh()->status === BackupStatus::Restored ? 'Backup restored.' : 'Restore started.', level: 'success');
     }
 
     public function confirmDelete(int $backupId): void

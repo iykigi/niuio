@@ -3,7 +3,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ $title ?? 'Dashboard' }} · {{ config('app.brand.name') }}</title>
+    {{-- Some pages already end their title with the brand name; don't repeat it. --}}
+    <title>{{ \Illuminate\Support\Str::of($title ?? 'Dashboard')->replaceEnd(' · '.config('app.brand.name'), '') }} · {{ config('app.brand.name') }}</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     {{-- Applies the saved theme before first paint to avoid a flash of the wrong theme. --}}

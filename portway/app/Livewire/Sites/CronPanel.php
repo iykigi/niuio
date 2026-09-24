@@ -69,7 +69,13 @@ class CronPanel extends Component
             return;
         }
 
-        $schedule = $this->preset === 'custom' ? $this->customSchedule : CronJob::PRESETS[$this->preset];
+        $schedule = $this->preset === 'custom' ? trim($this->customSchedule) : CronJob::PRESETS[$this->preset];
+
+        if (! \Cron\CronExpression::isValidExpression($schedule)) {
+            $this->addError('customSchedule', 'That is not a valid cron schedule, e.g. "*/5 * * * *".');
+
+            return;
+        }
 
         if ($this->editingId) {
             $cronJob = CronJob::where('site_id', $this->site->id)->findOrFail($this->editingId);

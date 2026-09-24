@@ -35,7 +35,7 @@
                             @endif
                         </div>
                         <div class="flex items-center gap-1">
-                            @if ($backup->status === $statuses::Completed)
+                            @if (in_array($backup->status, [$statuses::Completed, $statuses::Restored], true))
                                 <button wire:click="confirmRestore({{ $backup->id }})" class="btn-ghost !py-1 !px-2 text-xs">Restore</button>
                             @endif
                             <button wire:click="confirmDelete({{ $backup->id }})" class="btn-ghost !py-1 !px-2 text-xs text-rose-600">Delete</button>

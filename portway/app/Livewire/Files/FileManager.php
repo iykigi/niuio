@@ -56,6 +56,30 @@ class FileManager extends Component
         $this->site = $site;
     }
 
+    /**
+     * Runs a file operation that changes the site: re-checks write access
+     * (mount() only checked read access) and turns the service's
+     * validation errors — path traversal, quota, bad names — into a toast
+     * instead of a 500 page.
+     */
+    private function mutate(callable $operation, string $successMessage): bool
+    {
+        $this->authorize('update', $this->site);
+
+        try {
+            $operation($this->service());
+        } catch (\Throwable $e) {
+            report($e);
+            $this->dispatch('toast', message: $e->getMessage(), level: 'danger');
+
+            return false;
+        }
+
+        $this->dispatch('toast', message: $successMessage, level: 'success');
+
+        return true;
+    }
+
     private function service(): FileManagerService
     {
         return new FileManagerService($this->site, app(\App\Services\Storage\StorageUsageCalculator::class));
@@ -89,18 +113,17 @@ class FileManager extends Component
             return;
         }
 
-        $this->editingPath = $path;
-        $this->editingContent = $this->service()->read($path);
+        try {
+            $this->editingContent = $this->service()->read($path);
+            $this->editingPath = $path;
+        } catch (\Throwable $e) {
+            $this->dispatch('toast', message: $e->getMessage(), level: 'danger');
+        }
     }
 
     public function saveFile(): void
     {
-        try {
-            $this->service()->write($this->editingPath, $this->editingContent);
-            $this->dispatch('toast', message: 'File saved.', level: 'success');
-        } catch (\Throwable $e) {
-            $this->dispatch('toast', message: $e->getMessage(), level: 'danger');
-        }
+        $this->mutate(fn ($files) => $files->write($this->editingPath, $this->editingContent), 'File saved.');
     }
 
     public function closeEditor(): void
@@ -111,20 +134,22 @@ class FileManager extends Component
 
     public function createFolder(): void
     {
-        $this->validate(['newName' => ['required', 'string', 'max:255']]);
-        $this->service()->createDirectory(trim($this->path.'/'.$this->newName, '/'));
-        $this->showCreateFolder = false;
-        $this->newName = '';
-        $this->dispatch('toast', message: 'Folder created.', level: 'success');
+        $this->validate(['newName' => ['required', 'string', 'max:255', 'not_regex:#[\\\\/]#']], ['newName.not_regex' => 'Names cannot contain / or \\.']);
+
+        if ($this->mutate(fn ($files) => $files->createDirectory(trim($this->path.'/'.$this->newName, '/')), 'Folder created.')) {
+            $this->showCreateFolder = false;
+            $this->newName = '';
+        }
     }
 
     public function createFile(): void
     {
-        $this->validate(['newName' => ['required', 'string', 'max:255']]);
-        $this->service()->createFile(trim($this->path.'/'.$this->newName, '/'));
-        $this->showCreateFile = false;
-        $this->newName = '';
-        $this->dispatch('toast', message: 'File created.', level: 'success');
+        $this->validate(['newName' => ['required', 'string', 'max:255', 'not_regex:#[\\\\/]#']], ['newName.not_regex' => 'Names cannot contain / or \\.']);
+
+        if ($this->mutate(fn ($files) => $files->createFile(trim($this->path.'/'.$this->newName, '/')), 'File created.')) {
+            $this->showCreateFile = false;
+            $this->newName = '';
+        }
     }
 
     public function openRename(string $path): void
@@ -136,10 +161,11 @@ class FileManager extends Component
 
     public function rename(): void
     {
-        $this->validate(['newName' => ['required', 'string', 'max:255']]);
-        $this->service()->rename($this->renameTarget, $this->newName);
-        $this->showRename = false;
-        $this->dispatch('toast', message: 'Renamed.', level: 'success');
+        $this->validate(['newName' => ['required', 'string', 'max:255', 'not_regex:#[\\\\/]#']], ['newName.not_regex' => 'Names cannot contain / or \\.']);
+
+        if ($this->mutate(fn ($files) => $files->rename($this->renameTarget, $this->newName), 'Renamed.')) {
+            $this->showRename = false;
+        }
     }
 
     public function openPermissions(string $path): void
@@ -150,29 +176,29 @@ class FileManager extends Component
 
     public function savePermissions(): void
     {
-        try {
-            $this->service()->setPermissions($this->permissionsTarget, $this->permissionsValue);
+        if ($this->mutate(fn ($files) => $files->setPermissions($this->permissionsTarget, $this->permissionsValue), 'Permissions updated.')) {
             $this->showPermissions = false;
-            $this->dispatch('toast', message: 'Permissions updated.', level: 'success');
-        } catch (\Throwable $e) {
-            $this->dispatch('toast', message: $e->getMessage(), level: 'danger');
         }
     }
 
     public function delete(string $path): void
     {
-        $this->service()->delete($path);
-        $this->selected = array_values(array_diff($this->selected, [$path]));
-        $this->dispatch('toast', message: 'Deleted.', level: 'success');
+        if ($this->mutate(fn ($files) => $files->delete($path), 'Deleted.')) {
+            $this->selected = array_values(array_diff($this->selected, [$path]));
+        }
     }
 
     public function deleteSelected(): void
     {
-        foreach ($this->selected as $path) {
-            $this->service()->delete($path);
+        $selected = $this->selected;
+
+        if ($this->mutate(function ($files) use ($selected) {
+            foreach ($selected as $path) {
+                $files->delete($path);
+            }
+        }, 'Deleted selected items.')) {
+            $this->selected = [];
         }
-        $this->selected = [];
-        $this->dispatch('toast', message: 'Deleted selected items.', level: 'success');
     }
 
     public function zipSelected(): void
@@ -183,39 +209,47 @@ class FileManager extends Component
 
         $zipName = trim($this->path.'/archive-'.now()->format('Ymd-His').'.zip', '/');
 
-        try {
-            $this->service()->zip($this->selected, $zipName);
+        if ($this->mutate(fn ($files) => $files->zip($this->selected, $zipName), 'Archive created.')) {
             $this->selected = [];
-            $this->dispatch('toast', message: 'Archive created.', level: 'success');
-        } catch (\Throwable $e) {
-            $this->dispatch('toast', message: $e->getMessage(), level: 'danger');
         }
     }
 
     public function extract(string $path): void
     {
-        try {
-            $this->service()->extract($path, $this->path);
-            $this->dispatch('toast', message: 'Archive extracted.', level: 'success');
-        } catch (\Throwable $e) {
-            $this->dispatch('toast', message: $e->getMessage(), level: 'danger');
-        }
+        $this->mutate(fn ($files) => $files->extract($path, $this->path), 'Archive extracted.');
+    }
+
+    /**
+     * Livewire calls this once the selected files have finished uploading
+     * to its temporary storage.
+     */
+    public function updatedUploads(): void
+    {
+        $this->upload();
     }
 
     public function upload(): void
     {
+        $this->authorize('update', $this->site);
         $this->validate(['uploads.*' => ['file', 'max:512000']]); // 500MB per file ceiling
+
+        $failed = 0;
 
         foreach ($this->uploads as $file) {
             try {
                 $this->service()->upload($this->path, $file);
             } catch (\Throwable $e) {
+                $failed++;
                 $this->dispatch('toast', message: "Upload failed for {$file->getClientOriginalName()}: {$e->getMessage()}", level: 'danger');
             }
         }
 
+        $uploaded = count($this->uploads) - $failed;
         $this->uploads = [];
-        $this->dispatch('toast', message: 'Upload complete.', level: 'success');
+
+        if ($uploaded > 0) {
+            $this->dispatch('toast', message: $uploaded === 1 ? 'File uploaded.' : "{$uploaded} files uploaded.", level: 'success');
+        }
     }
 
     public function downloadUrl(string $path): string

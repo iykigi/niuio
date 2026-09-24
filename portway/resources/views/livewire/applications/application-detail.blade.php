@@ -321,7 +321,7 @@
 
         <div class="mt-6 flex justify-end gap-2">
             <button wire:click="$set('showUpload', false)" class="btn-secondary">Cancel</button>
-            <button wire:click="upload" wire:loading.attr="disabled" wire:target="upload,buildFile" class="btn-primary">
+            <button wire:click="uploadBuild" wire:loading.attr="disabled" wire:target="uploadBuild,buildFile" class="btn-primary">
                 Save as draft
             </button>
         </div>

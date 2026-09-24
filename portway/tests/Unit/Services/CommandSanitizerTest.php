@@ -62,3 +62,17 @@ it('rejects git URL schemes that shell out or read arbitrary local files', funct
     expect(CommandSanitizer::isSafe('git clone ext::sh -c id .'))->toBeFalse();
     expect(CommandSanitizer::isSafe('git clone file:///etc/passwd .'))->toBeFalse();
 });
+
+it('rejects a program hidden behind a subshell, braces, quotes or a backslash', function () {
+    expect(CommandSanitizer::isSafe('ls; (whoami)'))->toBeFalse();
+    expect(CommandSanitizer::isSafe('ls && { whoami; }'))->toBeFalse();
+    expect(CommandSanitizer::isSafe('ls; "whoami"'))->toBeFalse();
+    expect(CommandSanitizer::isSafe('ls; \whoami'))->toBeFalse();
+    expect(CommandSanitizer::isSafe('X=1 whoami'))->toBeFalse();
+});
+
+it('still allows chained and piped allowlisted programs', function () {
+    expect(CommandSanitizer::isSafe('git status && npm run build'))->toBeTrue();
+    expect(CommandSanitizer::isSafe('ls | grep index'))->toBeTrue();
+    expect(CommandSanitizer::isSafe('php artisan migrate --force'))->toBeTrue();
+});

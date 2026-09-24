@@ -16,9 +16,16 @@ class DownloadController extends Controller
 
         $relativePath = $request->validate(['path' => ['required', 'string']])['path'];
         $resolver = new PathResolver($site);
-        $absolute = $resolver->resolve($relativePath);
 
-        abort_unless(Storage::disk('hosting')->exists($absolute), 404);
+        try {
+            $absolute = $resolver->resolve($relativePath);
+        } catch (\InvalidArgumentException) {
+            abort(404);
+        }
+
+        // fileExists(), not exists(): the latter is also true for folders,
+        // which can't be streamed as a download.
+        abort_unless(Storage::disk('hosting')->fileExists($absolute), 404);
 
         return Storage::disk('hosting')->download($absolute);
     }

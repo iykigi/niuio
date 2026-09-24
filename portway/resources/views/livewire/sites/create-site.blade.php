@@ -35,6 +35,7 @@
                 <div class="mt-4">
                     <label class="label">Git repository URL</label>
                     <input type="text" wire:model="gitUrl" class="input" placeholder="https://github.com/you/repo.git">
+                    @error('gitUrl') <p class="mt-1 text-sm text-rose-600">{{ $message }}</p> @enderror
                 </div>
                 <div class="mt-4">
                     <label class="label">Branch</label>
