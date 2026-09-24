@@ -18,6 +18,19 @@ return [
 
     /*
      |--------------------------------------------------------------------
+     | Super Admin account
+     |--------------------------------------------------------------------
+     | Created by `php artisan db:seed` (and `php artisan portway:install`,
+     | which `php artisan serve` runs on first start). Change the password
+     | before the panel is reachable by anyone else.
+     */
+    'super_admin' => [
+        'email' => env('PORTWAY_SUPER_ADMIN_EMAIL', 'admin@portway.test'),
+        'password' => env('PORTWAY_SUPER_ADMIN_PASSWORD', 'password'),
+    ],
+
+    /*
+     |--------------------------------------------------------------------
      | Default account limits
      |--------------------------------------------------------------------
      | These are the values a brand-new user account is created with.

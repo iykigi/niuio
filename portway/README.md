@@ -7,11 +7,34 @@ default), with no billing, subscriptions, or payment flow anywhere in the
 product. Administrators can change the default limits per account or
 platform-wide from the admin panel.
 
-This repository is **hand-written, unexecuted application code** — it was
-produced in a sandboxed environment with no access to Packagist, npm, or a
-database/queue/broadcast server, so `composer install`, `npm install`, and the
-test suite have never actually been run. Section 6 below explains exactly what
-that means for you before you deploy this.
+## Quick start
+
+```bash
+composer install
+php artisan serve
+```
+
+Open http://127.0.0.1:8000 and log in as **admin@portway.test** / **password**.
+
+That's all: on its first start `php artisan serve` creates `.env`, the app
+key and a SQLite database, runs the migrations and seeds the Super Admin
+(the same thing `php artisan portway:install` does). It needs no MySQL,
+Redis or Node.js — the compiled CSS/JS ships in `public/build`.
+
+### دەستپێکی خێرا (کوردی)
+
+```bash
+composer install
+php artisan serve
+```
+
+پاشان بڕۆ بۆ http://127.0.0.1:8000 و بە **admin@portway.test** و وشەی
+نهێنی **password** بچۆ ژوورەوە. یەکەم جار کە `php artisan serve` کار
+دەکات، خۆی فایلی `.env`، کلیلی ئەپ و داتابەیسی SQLite دروست دەکات و
+هەموو خشتەکان و هەژماری Super Admin ئامادە دەکات — پێویست بە MySQL،
+Redis یان Node.js ناکات. لە Windows، پێش `composer install` سەیری
+[INSTALL-WINDOWS.md](INSTALL-WINDOWS.md) بکە (چالاککردنی `pdo_sqlite`،
+`fileinfo` و `zip` لە `php.ini`).
 
 ## What's included
 
@@ -92,47 +115,25 @@ Other structural notes:
 
 ## Requirements
 
-- PHP 8.3+ with the usual Laravel extensions (`pdo_mysql` or `pdo_sqlite`,
-  `redis` if you use the Redis drivers below, `zip`, `gd` or `imagick`)
+- PHP 8.2+ with `pdo_sqlite` (or `pdo_mysql`), `mbstring`, `openssl`,
+  `fileinfo`, `zip`, `curl`, `xml` and `gd`. `php -m` lists what's enabled.
 - Composer 2
-- Node.js 20+ and npm
-- MySQL/MariaDB (or SQLite for a quick local trial)
-- Redis (default session/cache/queue/broadcast driver — see below to avoid it)
+- Only for a real deployment: MySQL/MariaDB and Redis
+- Only if you change the CSS/JS: Node.js 20.19+ and npm
 
 ## Getting started
 
-**On Windows, read [INSTALL-WINDOWS.md](INSTALL-WINDOWS.md) instead** — there
-are three Windows-specific gotchas (two PHP extensions that cannot exist on
-Windows at all, Composer's security-advisory blocking, and serving the app
-from the right directory) that will otherwise stop `composer install` before
-it ever creates `vendor/`.
+**On Windows, read [INSTALL-WINDOWS.md](INSTALL-WINDOWS.md) first** — it
+covers enabling the right PHP extensions in `php.ini`.
 
 ```bash
 composer install
-npm install
-cp .env.example .env
-php artisan key:generate
+php artisan serve        # first start also runs `php artisan portway:install`
 ```
 
-Edit `.env`:
+(`composer setup` does the same preparation without starting the server.)
 
-- For a **quick local trial without Redis or MySQL**, set
-  `DB_CONNECTION=sqlite` (remove the other `DB_*` lines — Portway creates
-  `database/database.sqlite` on demand), and set `SESSION_DRIVER=array`,
-  `CACHE_STORE=array`, `QUEUE_CONNECTION=sync`, `BROADCAST_CONNECTION=log`.
-- For a **real deployment**, configure `DB_*` for MySQL/MariaDB and point
-  `REDIS_*` at a Redis instance (used for sessions, cache, queues, and — via
-  Reverb/Pusher-protocol broadcasting — the live site-creation progress bar).
-
-Then:
-
-```bash
-php artisan migrate --seed
-php artisan storage:link
-npm run build          # or `npm run dev` while developing
-```
-
-The seeders create the RBAC roles/permissions and a Super Admin account:
+The Super Admin created on first start:
 
 ```
 email:    admin@portway.test          (override with PORTWAY_SUPER_ADMIN_EMAIL)
@@ -141,18 +142,44 @@ password: password                    (override with PORTWAY_SUPER_ADMIN_PASSWOR
 
 **Change that password immediately in a real deployment.**
 
-Run the app:
+### What the default `.env` gives you
+
+`.env.example` is set up for a single machine with no other services:
+
+| Setting | Default | Notes |
+| --- | --- | --- |
+| `DB_CONNECTION` | `sqlite` | `database/database.sqlite`, created for you |
+| `SESSION_DRIVER` / `CACHE_STORE` | `file` | |
+| `QUEUE_CONNECTION` | `sync` | provisioning, backups, SSL and deploys run immediately — no worker needed |
+| `BROADCAST_CONNECTION` | `log` | the site-creation progress screen polls instead |
+| `MAIL_MAILER` | `log` | verification and password-reset links are written to `storage/logs/laravel.log` |
+| `PORTWAY_PROVISIONER` | `local` | websites, databases (SQLite files) and backups live under `storage/` |
+
+Scheduled work (user cron jobs, SSL renewal, DNS checks, metrics) runs from
+`php artisan schedule:work` in a second terminal.
+
+### A real deployment
+
+Configure `DB_*` for MySQL/MariaDB, point `REDIS_*` at Redis and set
+`SESSION_DRIVER=redis`, `CACHE_STORE=redis`, `QUEUE_CONNECTION=redis`,
+`BROADCAST_CONNECTION=reverb`, `SESSION_SECURE_COOKIE=true`, `APP_ENV=production`,
+`APP_DEBUG=false`, then:
 
 ```bash
-php artisan serve
-php artisan horizon        # queue worker with dashboard (or: php artisan queue:work)
-php artisan schedule:work  # cron jobs, SSL renewal, DNS checks, metrics collection
+composer install --no-dev --optimize-autoloader
+php artisan portway:install
+php artisan horizon           # queue workers for every Portway queue
+php artisan schedule:work     # or a cron entry running `php artisan schedule:run` every minute
+php artisan reverb:start      # live progress over WebSockets
 ```
 
-If you're using the `local` provisioner (the default), everything above is
-enough — every feature works with no other servers. To host real websites on
-real Linux nodes, add at least one node from **Admin → Servers** and set
-`PORTWAY_PROVISIONER=ssh`.
+Without Horizon, a plain worker must listen on all of Portway's queues:
+`php artisan queue:work --queue=provisioning,ssl,backups,deployments,metrics,notifications,default`.
+
+The `local` provisioner runs terminal/cron/deploy commands on the panel's
+own machine (behind the command allowlist) — it is meant for development
+and evaluation. To host real websites for other people, add Linux nodes
+from **Admin → Servers** and set `PORTWAY_PROVISIONER=ssh`.
 
 ## Running the tests
 
@@ -197,30 +224,20 @@ and this test suite. Not yet built:
 - **Billing** — intentionally out of scope forever: Portway has no pricing or
   payment code anywhere by design.
 
-## Important: what has and hasn't been verified
+## What has been verified
 
-This codebase was written in a sandboxed environment with outbound access to
-Packagist and npm blocked, so **`composer install`, `npm install`,
-`php artisan migrate`, and the test suite were never actually executed**
-here. Every file was hand-written to be syntactically and semantically
-correct (all PHP files pass `php -l`, and every class/route/view reference
-was manually cross-checked against the files that define it), but "compiles
-and cross-references correctly" is not the same guarantee as "a real test
-run passed." Before relying on this in production:
+The panel has been installed from a clean checkout and exercised end to
+end in a real browser against `php artisan serve` (SQLite, `local`
+provisioner, `sync` queue): registration with e-mail verification,
+password reset, 2FA enrolment and login, every page of the user panel and
+the admin panel, creating/editing/deleting websites, domains, DNS records,
+databases (browse, edit rows, SQL, import/export), files (editor, upload,
+zip), backups and restores, cron jobs, the web terminal, Git connect and
+deploy, app build upload/publish/download/archive, support tickets,
+announcements, roles, suspension and impersonation, and every `/api/v1`
+endpoint with a Sanctum token. `composer test` passes.
 
-1. Run `composer install && npm install` and fix any dependency-version
-   surprises (versions were pinned from memory of each package's API, not
-   from a live `composer show`).
-2. Run `php artisan migrate --seed` against a real database and watch for
-   any migration ordering issue.
-3. Run `composer test` and fix anything a real Laravel/Pest runtime catches
-   that static review couldn't (subtle Eloquent behavior, Livewire lifecycle
-   edge cases, and exact third-party API method names/signatures — e.g.
-   `pragmarx/google2fa`, `bacon/bacon-qr-code` — are the most likely spots).
-4. Review `SshProvisionerDriver` and the expected `portway-agent` contract
-   carefully before pointing it at a real server — it has not been
-   integration-tested against a live node.
-
-Everything else — the data model, the authorization boundaries, the quota
-system, the admin panel, and the UI — should be complete and usable as
-delivered.
+Not exercised against real infrastructure: the `ssh` provisioner driver
+and its node-side `portway-agent` contract, MySQL/MariaDB as the panel
+database, Redis/Horizon queues and Reverb broadcasting. Review
+`SshProvisionerDriver` carefully before pointing it at a real server.

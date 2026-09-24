@@ -10,8 +10,8 @@ class SuperAdminSeeder extends Seeder
 {
     public function run(): void
     {
-        $email = env('PORTWAY_SUPER_ADMIN_EMAIL', 'admin@portway.test');
-        $password = env('PORTWAY_SUPER_ADMIN_PASSWORD', 'password');
+        $email = config('portway.super_admin.email');
+        $password = config('portway.super_admin.password');
 
         $user = User::query()->firstOrCreate(
             ['email' => $email],
