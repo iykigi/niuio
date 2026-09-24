@@ -26,9 +26,14 @@ class DomainsIndex extends Component
 
     public function addDomain(DomainConnectionService $service): void
     {
+        $this->hostname = strtolower(trim($this->hostname));
+
+        // Same rule as the API (App\Http\Requests\Domains\StoreDomainRequest).
         $this->validate([
-            'hostname' => ['required', 'string', 'max:255'],
+            'hostname' => ['required', 'string', 'max:255', 'regex:/^(?!-)[A-Za-z0-9-]{1,63}(\.[A-Za-z0-9-]{1,63})+$/'],
             'siteId' => ['required', 'integer'],
+        ], [
+            'hostname.regex' => 'Enter a valid domain name, e.g. example.com or blog.example.com.',
         ]);
 
         $site = Site::where('user_id', auth()->id())->findOrFail($this->siteId);

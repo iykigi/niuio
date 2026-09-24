@@ -4,23 +4,27 @@
     <div class="space-y-4">
         <div>
             <label class="label">Node.js version</label>
-            <select wire:model="site.node_version" class="input">
+            <select wire:model="nodeVersion" class="input">
                 @foreach (config('portway.node_versions') as $version)
                     <option value="{{ $version }}">Node {{ $version }}</option>
                 @endforeach
             </select>
+            @error('nodeVersion') <p class="mt-1 text-sm text-rose-600">{{ $message }}</p> @enderror
         </div>
         <div>
             <label class="label">Install command</label>
-            <input type="text" wire:model="site.node_install_command" class="input font-mono text-sm">
+            <input type="text" wire:model="nodeInstallCommand" class="input font-mono text-sm">
+            @error('nodeInstallCommand') <p class="mt-1 text-sm text-rose-600">{{ $message }}</p> @enderror
         </div>
         <div>
             <label class="label">Build command</label>
-            <input type="text" wire:model="site.node_build_command" class="input font-mono text-sm">
+            <input type="text" wire:model="nodeBuildCommand" class="input font-mono text-sm">
+            @error('nodeBuildCommand') <p class="mt-1 text-sm text-rose-600">{{ $message }}</p> @enderror
         </div>
         <div>
             <label class="label">Start command</label>
-            <input type="text" wire:model="site.node_start_command" class="input font-mono text-sm">
+            <input type="text" wire:model="nodeStartCommand" class="input font-mono text-sm">
+            @error('nodeStartCommand') <p class="mt-1 text-sm text-rose-600">{{ $message }}</p> @enderror
         </div>
     </div>
 

@@ -66,7 +66,16 @@ class ProvisionSiteJob implements ShouldQueue
             $driver->reloadWebServer($this->site);
 
             $this->step('Generating SSL…', 90);
-            app(\App\Services\Ssl\SslService::class)->issueForDomain($temporaryDomain, silent: true);
+
+            try {
+                app(\App\Services\Ssl\SslService::class)->issueForDomain($temporaryDomain, silent: true);
+            } catch (Throwable $e) {
+                // A certificate problem shouldn't throw away an otherwise
+                // working website: SslService has already marked the
+                // certificate failed with the reason, and it can be
+                // re-issued from the site's SSL tab.
+                report($e);
+            }
 
             $this->site->forceFill([
                 'status' => SiteStatus::Active,

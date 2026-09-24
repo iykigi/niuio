@@ -4,11 +4,13 @@
     <div class="space-y-4">
         <div>
             <label class="label">Website name</label>
-            <input type="text" wire:model="site.name" class="input">
+            <input type="text" wire:model="name" class="input">
+            @error('name') <p class="mt-1 text-sm text-rose-600">{{ $message }}</p> @enderror
         </div>
         <div>
             <label class="label">Document root</label>
-            <input type="text" wire:model="site.document_root" class="input font-mono text-sm">
+            <input type="text" wire:model="documentRoot" class="input font-mono text-sm">
+            @error('documentRoot') <p class="mt-1 text-sm text-rose-600">{{ $message }}</p> @enderror
         </div>
     </div>
 

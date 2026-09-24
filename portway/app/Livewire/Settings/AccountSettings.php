@@ -66,13 +66,15 @@ class AccountSettings extends Component
 
         $emailChanged = $this->email !== $user->email;
 
-        $user->update([
+        // email_verified_at is deliberately not mass-assignable, so it is
+        // reset with forceFill rather than slipped into update().
+        $user->forceFill([
             'name' => $this->name,
             'email' => $this->email,
             'timezone' => $this->timezone,
             'locale' => $this->locale,
             'email_verified_at' => $emailChanged ? null : $user->email_verified_at,
-        ]);
+        ])->save();
 
         if ($emailChanged) {
             $user->sendEmailVerificationNotification();

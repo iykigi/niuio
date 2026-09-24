@@ -14,6 +14,8 @@ class SslCertificate extends Model
     protected $fillable = [
         'domain_id', 'provider', 'status', 'issuer', 'certificate', 'private_key',
         'chain', 'issued_at', 'expires_at', 'auto_renew',
+        'last_renewal_attempt_at',
+        'last_error',
     ];
 
     protected $hidden = ['private_key'];

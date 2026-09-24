@@ -12,7 +12,7 @@
                 @foreach ($files as $file)
                     <li>
                         <button
-                            wire:click="open('{{ $file['path'] }}')"
+                            wire:click="open(@js($file['path']))"
                             class="w-full rounded-lg px-3 py-2 text-left text-sm {{ $activeFile === $file['path'] ? 'bg-harbor-50 font-medium text-harbor-700 dark:bg-harbor-500/10 dark:text-harbor-300' : 'text-slate-600 hover:bg-surface-50 dark:text-slate-300 dark:hover:bg-white/5' }}"
                         >
                             <span class="block truncate font-mono">{{ $file['name'] }}</span>

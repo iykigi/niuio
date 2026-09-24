@@ -27,7 +27,7 @@ class ResetPassword extends Component
         $this->email = request()->query('email', '');
     }
 
-    public function reset(): void
+    public function resetPassword(): void
     {
         $this->validate([
             'email' => ['required', 'email'],

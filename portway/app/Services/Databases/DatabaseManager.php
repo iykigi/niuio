@@ -61,6 +61,17 @@ class DatabaseManager
         return $this->connection()->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite';
     }
 
+    /**
+     * Quotes an identifier for the connected engine: "name" for SQLite,
+     * `name` for MySQL/MariaDB (where "name" would be a string literal).
+     */
+    private function quoteIdentifier(string $identifier): string
+    {
+        return $this->isSqlite()
+            ? '"'.str_replace('"', '""', $identifier).'"'
+            : '`'.str_replace('`', '``', $identifier).'`';
+    }
+
     public function listTables(): array
     {
         if ($this->isSqlite()) {
@@ -80,7 +91,7 @@ class DatabaseManager
         $table = $this->assertValidIdentifier($table);
 
         if ($this->isSqlite()) {
-            $rows = $this->connection()->query("PRAGMA table_info(\"{$table}\")")->fetchAll();
+            $rows = $this->connection()->query('PRAGMA table_info('.$this->quoteIdentifier($table).')')->fetchAll();
 
             return array_map(fn ($r) => [
                 'name' => $r['name'],
@@ -91,7 +102,7 @@ class DatabaseManager
             ], $rows);
         }
 
-        $rows = $this->connection()->query("DESCRIBE `{$table}`")->fetchAll();
+        $rows = $this->connection()->query('DESCRIBE '.$this->quoteIdentifier($table))->fetchAll();
 
         return array_map(fn ($r) => [
             'name' => $r['Field'],
@@ -106,20 +117,21 @@ class DatabaseManager
     {
         $table = $this->assertValidIdentifier($table);
 
-        return (int) $this->connection()->query("SELECT COUNT(*) AS c FROM \"{$table}\"")->fetch()['c'];
+        return (int) $this->connection()->query('SELECT COUNT(*) AS c FROM '.$this->quoteIdentifier($table))->fetch()['c'];
     }
 
     public function browseRows(string $table, int $page = 1, int $perPage = 25, ?string $search = null): array
     {
         $table = $this->assertValidIdentifier($table);
+        $page = max(1, $page);
         $offset = ($page - 1) * $perPage;
 
-        $sql = "SELECT * FROM \"{$table}\"";
+        $sql = 'SELECT * FROM '.$this->quoteIdentifier($table);
         $bindings = [];
 
         if ($search !== null && $search !== '') {
             $columns = array_column($this->tableColumns($table), 'name');
-            $likeClauses = array_map(fn ($c) => "\"{$c}\" LIKE ?", $columns);
+            $likeClauses = array_map(fn ($c) => $this->quoteIdentifier($c).' LIKE ?', $columns);
             $sql .= ' WHERE '.implode(' OR ', $likeClauses);
             $bindings = array_fill(0, count($columns), "%{$search}%");
         }
@@ -135,32 +147,47 @@ class DatabaseManager
     public function insertRow(string $table, array $data): void
     {
         $table = $this->assertValidIdentifier($table);
+
+        if ($data === []) {
+            $this->connection()->exec('INSERT INTO '.$this->quoteIdentifier($table).($this->isSqlite() ? ' DEFAULT VALUES' : ' () VALUES ()'));
+
+            return;
+        }
+
         $columns = array_map($this->assertValidIdentifier(...), array_keys($data));
 
         $placeholders = implode(', ', array_fill(0, count($columns), '?'));
-        $columnList = implode(', ', array_map(fn ($c) => "\"{$c}\"", $columns));
+        $columnList = implode(', ', array_map($this->quoteIdentifier(...), $columns));
 
-        $statement = $this->connection()->prepare("INSERT INTO \"{$table}\" ({$columnList}) VALUES ({$placeholders})");
+        $statement = $this->connection()->prepare('INSERT INTO '.$this->quoteIdentifier($table)." ({$columnList}) VALUES ({$placeholders})");
         $statement->execute(array_values($data));
     }
 
     public function updateRow(string $table, array $primaryKey, array $data): void
     {
+        if ($primaryKey === []) {
+            throw new InvalidArgumentException('Rows can only be changed in tables that have a primary key.');
+        }
+
         $table = $this->assertValidIdentifier($table);
 
-        $setClause = implode(', ', array_map(fn ($c) => "\"{$this->assertValidIdentifier($c)}\" = ?", array_keys($data)));
-        $whereClause = implode(' AND ', array_map(fn ($c) => "\"{$this->assertValidIdentifier($c)}\" = ?", array_keys($primaryKey)));
+        $setClause = implode(', ', array_map(fn ($c) => $this->quoteIdentifier($this->assertValidIdentifier($c)).' = ?', array_keys($data)));
+        $whereClause = implode(' AND ', array_map(fn ($c) => $this->quoteIdentifier($this->assertValidIdentifier($c)).' = ?', array_keys($primaryKey)));
 
-        $statement = $this->connection()->prepare("UPDATE \"{$table}\" SET {$setClause} WHERE {$whereClause}");
+        $statement = $this->connection()->prepare('UPDATE '.$this->quoteIdentifier($table)." SET {$setClause} WHERE {$whereClause}");
         $statement->execute([...array_values($data), ...array_values($primaryKey)]);
     }
 
     public function deleteRow(string $table, array $primaryKey): void
     {
-        $table = $this->assertValidIdentifier($table);
-        $whereClause = implode(' AND ', array_map(fn ($c) => "\"{$this->assertValidIdentifier($c)}\" = ?", array_keys($primaryKey)));
+        if ($primaryKey === []) {
+            throw new InvalidArgumentException('Rows can only be changed in tables that have a primary key.');
+        }
 
-        $statement = $this->connection()->prepare("DELETE FROM \"{$table}\" WHERE {$whereClause}");
+        $table = $this->assertValidIdentifier($table);
+        $whereClause = implode(' AND ', array_map(fn ($c) => $this->quoteIdentifier($this->assertValidIdentifier($c)).' = ?', array_keys($primaryKey)));
+
+        $statement = $this->connection()->prepare('DELETE FROM '.$this->quoteIdentifier($table)." WHERE {$whereClause}");
         $statement->execute(array_values($primaryKey));
     }
 
@@ -171,6 +198,8 @@ class DatabaseManager
      */
     public function runQuery(string $sql): array
     {
+        $this->assertStatementAllowed($sql);
+
         $statement = $this->connection()->query($sql);
 
         if ($statement === false) {
@@ -189,13 +218,30 @@ class DatabaseManager
         $output = "-- Portway export of {$this->database->name}\n-- Generated ".now()->toIso8601String()."\n\n";
 
         foreach ($this->listTables() as $table) {
-            $rows = $this->connection()->query("SELECT * FROM \"{$table}\"")->fetchAll();
+            $quotedTable = $this->quoteIdentifier($table);
+
+            // Schema first, so the dump can be imported into an empty database.
+            if ($this->isSqlite()) {
+                $statement = $this->connection()->prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?");
+                $statement->execute([$table]);
+                $create = $statement->fetchColumn();
+            } else {
+                $create = $this->connection()->query('SHOW CREATE TABLE '.$quotedTable)->fetch(PDO::FETCH_NUM)[1] ?? null;
+            }
+
+            if ($create) {
+                $output .= "{$create};\n";
+            }
+
+            $rows = $this->connection()->query('SELECT * FROM '.$quotedTable)->fetchAll();
 
             foreach ($rows as $row) {
-                $columns = implode(', ', array_map(fn ($c) => "\"{$c}\"", array_keys($row)));
+                $columns = implode(', ', array_map($this->quoteIdentifier(...), array_keys($row)));
                 $values = implode(', ', array_map(fn ($v) => $v === null ? 'NULL' : $this->connection()->quote((string) $v), array_values($row)));
-                $output .= "INSERT INTO \"{$table}\" ({$columns}) VALUES ({$values});\n";
+                $output .= "INSERT INTO {$quotedTable} ({$columns}) VALUES ({$values});\n";
             }
+
+            $output .= "\n";
         }
 
         return $output;
@@ -203,6 +249,8 @@ class DatabaseManager
 
     public function importSql(string $sql): void
     {
+        $this->assertStatementAllowed($sql);
+
         foreach ($this->splitStatements($sql) as $statement) {
             if (trim($statement) !== '') {
                 $this->connection()->exec($statement);
@@ -213,6 +261,21 @@ class DatabaseManager
     private function splitStatements(string $sql): array
     {
         return array_filter(array_map('trim', explode(";\n", str_replace(";\r\n", ";\n", $sql))));
+    }
+
+    /**
+     * On the "local" driver every account's database is a SQLite file on
+     * the panel's own disk, and SQLite can open or write *other* files:
+     * ATTACH would expose the panel's database (every account, password
+     * hashes, 2FA secrets) and VACUUM INTO / ATTACH can create files
+     * anywhere the PHP process can write. Neither has a legitimate use
+     * inside a single hosted database, so both are refused outright.
+     */
+    private function assertStatementAllowed(string $sql): void
+    {
+        if ($this->isSqlite() && preg_match('/\b(ATTACH|DETACH|VACUUM|load_extension)\b/i', $sql, $matches)) {
+            throw new InvalidArgumentException("{$matches[1]} statements are not allowed.");
+        }
     }
 
     private function assertValidIdentifier(string $identifier): string

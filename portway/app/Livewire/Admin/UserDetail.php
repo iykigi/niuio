@@ -112,12 +112,12 @@ class UserDetail extends Component
     {
         $this->authorize('suspend', $this->user);
 
-        $this->user->update([
+        $this->user->forceFill([
             'is_suspended' => true,
             'suspension_reason' => $this->suspensionReason ?: null,
             'suspended_at' => now(),
             'suspended_by' => Auth::id(),
-        ]);
+        ])->save();
 
         $this->confirmingSuspend = false;
         $this->dispatch('toast', message: 'Account suspended.', level: 'success');
@@ -127,12 +127,12 @@ class UserDetail extends Component
     {
         $this->authorize('suspend', $this->user);
 
-        $this->user->update([
+        $this->user->forceFill([
             'is_suspended' => false,
             'suspension_reason' => null,
             'suspended_at' => null,
             'suspended_by' => null,
-        ]);
+        ])->save();
 
         $this->dispatch('toast', message: 'Account reinstated.', level: 'success');
     }

@@ -53,7 +53,7 @@ class DatabaseDetail extends Component
 
     public function setTab(string $tab): void
     {
-        $this->tab = $tab;
+        $this->tab = in_array($tab, ['structure', 'browse', 'query', 'import-export', 'credentials'], true) ? $tab : 'structure';
     }
 
     public function selectTable(string $table): void
@@ -84,10 +84,22 @@ class DatabaseDetail extends Component
     {
         $this->authorize('runQuery', $this->database);
 
-        if ($this->editingPrimaryKey) {
-            $this->manager()->updateRow($this->selectedTable, $this->editingPrimaryKey, $this->editingRow);
-        } else {
-            $this->manager()->insertRow($this->selectedTable, $this->editingRow);
+        // Empty inputs mean "use the column default" (e.g. an auto-increment
+        // id) when inserting, rather than forcing an empty string into it.
+        $data = $this->editingPrimaryKey
+            ? $this->editingRow
+            : array_filter($this->editingRow, fn ($value) => $value !== '' && $value !== null);
+
+        try {
+            if ($this->editingPrimaryKey) {
+                $this->manager()->updateRow($this->selectedTable, $this->editingPrimaryKey, $data);
+            } else {
+                $this->manager()->insertRow($this->selectedTable, $data);
+            }
+        } catch (\Throwable $e) {
+            $this->dispatch('toast', message: $e->getMessage(), level: 'danger');
+
+            return;
         }
 
         $this->showRowModal = false;
@@ -97,7 +109,15 @@ class DatabaseDetail extends Component
     public function deleteRow(array $primaryKey): void
     {
         $this->authorize('runQuery', $this->database);
-        $this->manager()->deleteRow($this->selectedTable, $primaryKey);
+
+        try {
+            $this->manager()->deleteRow($this->selectedTable, $primaryKey);
+        } catch (\Throwable $e) {
+            $this->dispatch('toast', message: $e->getMessage(), level: 'danger');
+
+            return;
+        }
+
         $this->dispatch('toast', message: 'Row deleted.', level: 'success');
     }
 
@@ -128,7 +148,14 @@ class DatabaseDetail extends Component
         $this->authorize('runQuery', $this->database);
         $this->validate(['importFile' => ['required', 'file', 'max:20480']]);
 
-        $this->manager()->importSql(file_get_contents($this->importFile->getRealPath()));
+        try {
+            $this->manager()->importSql(file_get_contents($this->importFile->getRealPath()));
+        } catch (\Throwable $e) {
+            $this->addError('importFile', $e->getMessage());
+
+            return;
+        }
+
         $this->importFile = null;
         $this->dispatch('toast', message: 'Import complete.', level: 'success');
     }
@@ -143,18 +170,35 @@ class DatabaseDetail extends Component
 
     public function render()
     {
-        $tables = $this->manager()->listTables();
-        $this->selectedTable ??= $tables[0] ?? null;
+        $tables = $columns = $rows = [];
+        $rowCount = 0;
+        $browseError = null;
 
-        $columns = $this->selectedTable ? $this->manager()->tableColumns($this->selectedTable) : [];
-        $rows = $this->selectedTable ? $this->manager()->browseRows($this->selectedTable, $this->page, 25, $this->rowSearch) : [];
-        $rowCount = $this->selectedTable ? $this->manager()->rowCount($this->selectedTable) : 0;
+        // A table whose name the manager refuses (spaces, dashes, ...) or
+        // an unreachable server must not take the whole page down with it.
+        try {
+            $tables = $this->manager()->listTables();
+
+            if (! in_array($this->selectedTable, $tables, true)) {
+                $this->selectedTable = $tables[0] ?? null;
+            }
+
+            if ($this->selectedTable) {
+                $columns = $this->manager()->tableColumns($this->selectedTable);
+                $rows = $this->manager()->browseRows($this->selectedTable, $this->page, 25, $this->rowSearch);
+                $rowCount = $this->manager()->rowCount($this->selectedTable);
+            }
+        } catch (\Throwable $e) {
+            report($e);
+            $browseError = $e->getMessage();
+        }
 
         return view('livewire.databases.database-detail', [
             'tables' => $tables,
             'columns' => $columns,
             'rows' => $rows,
             'rowCount' => $rowCount,
+            'browseError' => $browseError,
             'databaseUser' => $this->database->databaseUsers()->first(),
         ]);
     }

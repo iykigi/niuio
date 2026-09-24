@@ -29,7 +29,7 @@
                 <button wire:click="openDirectory('')" class="hover:text-harbor-600">Home</button>
                 @foreach ($breadcrumbs as $crumb)
                     <span>/</span>
-                    <button wire:click="openDirectory('{{ $crumb['path'] }}')" class="hover:text-harbor-600">{{ $crumb['label'] }}</button>
+                    <button wire:click="openDirectory(@js($crumb['path']))" class="hover:text-harbor-600">{{ $crumb['label'] }}</button>
                 @endforeach
             </div>
 
@@ -72,15 +72,15 @@
                     @forelse ($entries as $entry)
                         <tr wire:key="entry-{{ $entry['path'] }}">
                             <td class="px-4 py-2">
-                                <input type="checkbox" wire:click="toggleSelect('{{ $entry['path'] }}')" @checked(in_array($entry['path'], $selected)) class="rounded border-surface-300">
+                                <input type="checkbox" wire:click="toggleSelect(@js($entry['path']))" @checked(in_array($entry['path'], $selected)) class="rounded border-surface-300">
                             </td>
                             <td class="px-4 py-2">
                                 @if ($entry['type'] === 'directory')
-                                    <button wire:click="openDirectory('{{ $entry['path'] }}')" class="flex items-center gap-2 font-medium text-slate-700 dark:text-slate-200">
+                                    <button wire:click="openDirectory(@js($entry['path']))" class="flex items-center gap-2 font-medium text-slate-700 dark:text-slate-200">
                                         <x-heroicon-o-folder class="h-4 w-4 text-harbor-500" /> {{ $entry['name'] }}
                                     </button>
                                 @elseif ($entry['editable'])
-                                    <button wire:click="openFile('{{ $entry['path'] }}')" class="flex items-center gap-2 text-slate-700 dark:text-slate-200">
+                                    <button wire:click="openFile(@js($entry['path']))" class="flex items-center gap-2 text-slate-700 dark:text-slate-200">
                                         <x-heroicon-o-document-text class="h-4 w-4 text-slate-400" /> {{ $entry['name'] }}
                                     </button>
                                 @else
@@ -101,11 +101,11 @@
                                         <a href="{{ $this->downloadUrl($entry['path']) }}" class="btn-ghost !p-1.5"><x-heroicon-o-arrow-down-tray class="h-4 w-4" /></a>
                                     @endif
                                     @if (($entry['extension'] ?? '') === 'zip')
-                                        <button wire:click="extract('{{ $entry['path'] }}')" class="btn-ghost !p-1.5"><x-heroicon-o-archive-box-x-mark class="h-4 w-4" /></button>
+                                        <button wire:click="extract(@js($entry['path']))" class="btn-ghost !p-1.5"><x-heroicon-o-archive-box-x-mark class="h-4 w-4" /></button>
                                     @endif
-                                    <button wire:click="openRename('{{ $entry['path'] }}')" class="btn-ghost !p-1.5"><x-heroicon-o-pencil class="h-4 w-4" /></button>
-                                    <button wire:click="openPermissions('{{ $entry['path'] }}')" class="btn-ghost !p-1.5"><x-heroicon-o-lock-closed class="h-4 w-4" /></button>
-                                    <button wire:click="delete('{{ $entry['path'] }}')" class="btn-ghost !p-1.5 text-rose-600 dark:text-rose-400"><x-heroicon-o-trash class="h-4 w-4" /></button>
+                                    <button wire:click="openRename(@js($entry['path']))" class="btn-ghost !p-1.5"><x-heroicon-o-pencil class="h-4 w-4" /></button>
+                                    <button wire:click="openPermissions(@js($entry['path']))" class="btn-ghost !p-1.5"><x-heroicon-o-lock-closed class="h-4 w-4" /></button>
+                                    <button wire:click="delete(@js($entry['path']))" class="btn-ghost !p-1.5 text-rose-600 dark:text-rose-400"><x-heroicon-o-trash class="h-4 w-4" /></button>
                                 </div>
                             </td>
                         </tr>

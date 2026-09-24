@@ -2,6 +2,12 @@
 
 @php
     $widths = ['sm' => 'max-w-sm', 'md' => 'max-w-md', 'lg' => 'max-w-lg', 'xl' => 'max-w-xl', '2xl' => 'max-w-2xl'];
+
+    // Callers pass the "close" action as wire:click.outside. It is bound
+    // as a plain wire:click on the backdrop: the dialog is a sibling of
+    // the backdrop, not inside it, so a real .outside listener there
+    // would fire on every click *inside* the dialog and close it.
+    $closeAction = $attributes->get('wire:click.outside') ?? $attributes->get('wire:click');
 @endphp
 
 {{-- Usage: <x-modal :show="$showModal"> ... </x-modal> from a Livewire
@@ -11,7 +17,7 @@
      inside typically does wire:click="$set('showModal', false)". --}}
 @if ($show)
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4" x-data x-transition.opacity>
-        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" {{ $attributes->whereStartsWith('wire:click') }}></div>
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @if ($closeAction) wire:click="{{ $closeAction }}" @endif></div>
 
         <div
             x-transition:enter="ease-out duration-200"

@@ -4,7 +4,7 @@ use Illuminate\Support\Str;
 
 return [
 
-    'driver' => env('SESSION_DRIVER', 'redis'),
+    'driver' => env('SESSION_DRIVER', 'file'),
 
     'lifetime' => (int) env('SESSION_LIFETIME', 120),
 
@@ -31,12 +31,13 @@ return [
 
     'domain' => env('SESSION_DOMAIN'),
 
-    // Defaults to true (cookie only sent over HTTPS) rather than Laravel's
-    // stock "null": Portway forces HTTPS in production (see
-    // AppServiceProvider), so the session cookie should never be issued
-    // without the Secure flag there. Set SESSION_SECURE_COOKIE=false
-    // explicitly for plain-HTTP local development.
-    'secure' => env('SESSION_SECURE_COOKIE', true),
+    // Defaults to true (cookie only sent over HTTPS) in production:
+    // Portway forces HTTPS there (see AppServiceProvider), so the session
+    // cookie should never be issued without the Secure flag. Everywhere
+    // else it defaults to false so `php artisan serve` over plain
+    // http://127.0.0.1:8000 can keep you logged in. Set
+    // SESSION_SECURE_COOKIE explicitly to override either way.
+    'secure' => env('SESSION_SECURE_COOKIE', env('APP_ENV', 'production') === 'production'),
 
     'http_only' => env('SESSION_HTTP_ONLY', true),
 

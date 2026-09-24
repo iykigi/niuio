@@ -75,19 +75,21 @@ class DomainConnectionService
         ]);
 
         if ($result['matches_expected'] ?? false) {
-            $wasConnectedAlready = $domain->status !== DomainStatus::PendingDns;
+            // Only pending/partially-detected domains are "newly" connected:
+            // one already connected, issuing SSL or active must not be
+            // knocked back to Connected or have its certificate re-issued
+            // every time DNS is re-checked.
+            $wasConnectedAlready = ! in_array($domain->status, [DomainStatus::PendingDns, DomainStatus::DnsDetected, DomainStatus::Failed], true);
 
-            if (! $wasConnectedAlready) {
-                $domain->update(['status' => DomainStatus::DnsDetected, 'verified_at' => now()]);
+            if ($wasConnectedAlready) {
+                return $domain->fresh();
             }
 
-            $domain->update(['status' => DomainStatus::Connected]);
+            $domain->update(['status' => DomainStatus::Connected, 'verified_at' => $domain->verified_at ?? now()]);
 
-            if (! $wasConnectedAlready) {
-                DomainConnected::dispatch($domain->fresh());
-                IssueSslCertificateJob::dispatch($domain->fresh())->onQueue(config('queue.names.ssl'));
-            }
-        } elseif (! empty($result['a']) || ! empty($result['cname'])) {
+            DomainConnected::dispatch($domain->fresh());
+            IssueSslCertificateJob::dispatch($domain->fresh())->onQueue(config('queue.names.ssl'));
+        } elseif ($domain->status === DomainStatus::PendingDns && (! empty($result['a']) || ! empty($result['cname']))) {
             $domain->update(['status' => DomainStatus::DnsDetected]);
         }
 

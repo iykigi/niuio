@@ -34,7 +34,7 @@
                 'settings' => 'Settings',
             ] as $key => $label)
                 <button
-                    wire:click="setTab('{{ $key }}')"
+                    wire:click="setTab(@js($key))"
                     class="whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium {{ $tab === $key ? 'border-harbor-600 text-harbor-700 dark:border-harbor-400 dark:text-harbor-300' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200' }}"
                 >
                     {{ $label }}
@@ -90,7 +90,7 @@
                             </div>
                         </div>
 
-                        <button wire:click="openUpload('{{ $platform->value }}')" class="btn-secondary">
+                        <button wire:click="openUpload(@js($platform->value))" class="btn-secondary">
                             <x-heroicon-o-arrow-up-tray class="h-4 w-4" /> Upload build
                         </button>
                     </div>

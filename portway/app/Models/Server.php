@@ -16,6 +16,12 @@ class Server extends Model
         'name', 'hostname', 'ip_address', 'internal_ip', 'region', 'role',
         'status', 'web_server', 'installed_php_versions', 'installed_node_versions',
         'max_sites', 'ssh_port', 'ssh_user', 'ssh_private_key', 'is_control_plane',
+        'current_sites',
+        'disk_total_mb',
+        'disk_used_mb',
+        'cpu_load',
+        'memory_used_percent',
+        'last_heartbeat_at',
     ];
 
     protected $hidden = ['ssh_private_key'];

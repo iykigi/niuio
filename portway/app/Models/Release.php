@@ -17,6 +17,10 @@ class Release extends Model
         'application_id', 'user_id', 'platform', 'version', 'status',
         'disk', 'path', 'original_filename', 'size_bytes', 'checksum_sha256',
         'architecture', 'minimum_os', 'changelog',
+        'published_at',
+        'archived_at',
+        'trashed_at',
+        'trashed_by',
     ];
 
     protected function casts(): array

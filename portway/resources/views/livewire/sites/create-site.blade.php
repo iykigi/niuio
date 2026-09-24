@@ -16,7 +16,7 @@
             <h3 class="mb-4 font-semibold text-slate-800 dark:text-slate-100">1. Choose a project type</h3>
             <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 @foreach ($projectTypes as $key => $type)
-                    <button wire:click="selectProjectType('{{ $key }}')" type="button" class="card-flat flex flex-col items-center gap-2 p-4 text-center transition hover:border-harbor-400 hover:shadow-soft">
+                    <button wire:click="selectProjectType(@js($key))" type="button" class="card-flat flex flex-col items-center gap-2 p-4 text-center transition hover:border-harbor-400 hover:shadow-soft">
                         <x-dynamic-component :component="'heroicon-o-'.$type['icon']" class="h-6 w-6 text-harbor-600 dark:text-harbor-400" />
                         <span class="text-xs font-medium text-slate-700 dark:text-slate-200">{{ $type['label'] }}</span>
                     </button>

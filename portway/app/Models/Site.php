@@ -23,6 +23,11 @@ class Site extends Model
         'php_memory_limit_mb', 'php_upload_max_mb', 'php_max_execution_seconds', 'php_extensions',
         'status', 'status_message', 'provisioning_progress', 'force_https',
         'git_repository_id',
+        'node_process_status',
+        'disk_usage_bytes',
+        'bandwidth_used_mb',
+        'disk_usage_calculated_at',
+        'last_deployed_at',
     ];
 
     protected function casts(): array

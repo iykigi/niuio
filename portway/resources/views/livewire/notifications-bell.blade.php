@@ -19,7 +19,7 @@
             @forelse ($notifications as $notification)
                 <a
                     href="{{ $notification->data['url'] ?? '#' }}"
-                    wire:click="markRead('{{ $notification->id }}')"
+                    wire:click="markRead(@js($notification->id))"
                     class="block border-b border-surface-100 px-4 py-3 text-sm hover:bg-surface-50 dark:border-white/5 dark:hover:bg-white/5 {{ $notification->read_at ? 'opacity-60' : '' }}"
                 >
                     <p class="font-medium text-slate-800 dark:text-slate-100">{{ $notification->data['title'] ?? 'Update' }}</p>

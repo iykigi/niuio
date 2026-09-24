@@ -19,6 +19,9 @@ class Domain extends Model
     protected $fillable = [
         'site_id', 'user_id', 'hostname', 'type', 'document_root_override',
         'status', 'verification_token', 'force_https',
+        'verified_at',
+        'last_dns_check_at',
+        'last_dns_check_result',
     ];
 
     protected function casts(): array

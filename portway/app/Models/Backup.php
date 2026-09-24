@@ -14,6 +14,8 @@ class Backup extends Model
     protected $fillable = [
         'site_id', 'user_id', 'initiated_by', 'type', 'trigger', 'status',
         'disk', 'path', 'size_bytes', 'failure_reason', 'expires_at',
+        'started_at',
+        'completed_at',
     ];
 
     protected function casts(): array

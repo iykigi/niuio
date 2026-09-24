@@ -14,6 +14,7 @@ class EmailAccount extends Model
         'domain_id', 'user_id', 'local_part', 'address', 'password', 'quota_mb',
         'forward_to', 'autoresponder_enabled', 'autoresponder_subject',
         'autoresponder_body', 'status',
+        'used_bytes',
     ];
 
     protected $hidden = ['password'];

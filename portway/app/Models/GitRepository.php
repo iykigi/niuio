@@ -14,6 +14,7 @@ class GitRepository extends Model
     protected $fillable = [
         'site_id', 'provider', 'url', 'branch', 'credentials', 'install_command',
         'build_command', 'auto_deploy_on_push', 'webhook_secret', 'last_commit_sha',
+        'last_deployed_at',
     ];
 
     protected $hidden = ['credentials', 'webhook_secret'];

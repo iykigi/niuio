@@ -25,7 +25,7 @@
         <div class="flex gap-1 border-b border-surface-200 dark:border-white/10">
             @foreach ($tabs as $key => $label)
                 <button
-                    wire:click="setTab('{{ $key }}')"
+                    wire:click="setTab(@js($key))"
                     class="whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium {{ $tab === $key ? 'border-harbor-600 text-harbor-700 dark:border-harbor-400 dark:text-harbor-300' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200' }}"
                 >
                     {{ $label }}

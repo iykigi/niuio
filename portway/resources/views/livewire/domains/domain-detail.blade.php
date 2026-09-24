@@ -15,7 +15,7 @@
 
     <div class="mb-6 flex gap-1 border-b border-surface-200 dark:border-white/10">
         @foreach (['dns' => 'DNS', 'ssl' => 'SSL', 'settings' => 'Settings'] as $key => $label)
-            <button wire:click="setTab('{{ $key }}')" class="border-b-2 px-3 py-2.5 text-sm font-medium {{ $tab === $key ? 'border-harbor-600 text-harbor-700 dark:border-harbor-400 dark:text-harbor-300' : 'border-transparent text-slate-500 dark:text-slate-400' }}">
+            <button wire:click="setTab(@js($key))" class="border-b-2 px-3 py-2.5 text-sm font-medium {{ $tab === $key ? 'border-harbor-600 text-harbor-700 dark:border-harbor-400 dark:text-harbor-300' : 'border-transparent text-slate-500 dark:text-slate-400' }}">
                 {{ $label }}
             </button>
         @endforeach

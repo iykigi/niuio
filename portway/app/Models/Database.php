@@ -17,6 +17,8 @@ class Database extends Model
 
     protected $fillable = [
         'user_id', 'site_id', 'server_id', 'name', 'engine', 'host', 'port', 'status',
+        'size_bytes',
+        'size_calculated_at',
     ];
 
     public function user(): BelongsTo

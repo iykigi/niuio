@@ -47,12 +47,12 @@ class UsersManager extends Component
         $target = User::findOrFail($this->suspendTargetId);
         $this->authorize('suspend', $target);
 
-        $target->update([
+        $target->forceFill([
             'is_suspended' => true,
             'suspension_reason' => $this->suspensionReason ?: null,
             'suspended_at' => now(),
             'suspended_by' => Auth::id(),
-        ]);
+        ])->save();
 
         $this->suspendTargetId = null;
         $this->dispatch('toast', message: "{$target->name} has been suspended.", level: 'success');
@@ -63,12 +63,12 @@ class UsersManager extends Component
         $target = User::findOrFail($userId);
         $this->authorize('suspend', $target);
 
-        $target->update([
+        $target->forceFill([
             'is_suspended' => false,
             'suspension_reason' => null,
             'suspended_at' => null,
             'suspended_by' => null,
-        ]);
+        ])->save();
 
         $this->dispatch('toast', message: "{$target->name} has been reinstated.", level: 'success');
     }

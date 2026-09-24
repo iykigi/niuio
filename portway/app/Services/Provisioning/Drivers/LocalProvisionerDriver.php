@@ -12,6 +12,7 @@ use App\Services\Provisioning\CommandSanitizer;
 use App\Services\Provisioning\ProvisionerDriver;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use PDO;
 use RuntimeException;
 use Symfony\Component\Process\Exception\ProcessFailedException;
@@ -40,9 +41,11 @@ class LocalProvisionerDriver implements ProvisionerDriver
         $diskTotal = @disk_total_space('/') ?: 1;
         $diskFree = @disk_free_space('/') ?: 0;
         $memoryInfo = $this->readLocalMemoryInfo();
+        // `nproc` only exists on Linux, and shell_exec is often disabled.
+        $cpuCount = (PHP_OS_FAMILY === 'Linux' && function_exists('shell_exec')) ? (int) @shell_exec('nproc 2>/dev/null') : 1;
 
         return [
-            'cpu_percent' => round(min(100, ($load[0] / max(1, (int) shell_exec('nproc') ?: 1)) * 100), 1),
+            'cpu_percent' => round(min(100, ($load[0] / max(1, $cpuCount)) * 100), 1),
             'memory_percent' => $memoryInfo['percent'],
             'disk_percent' => round((1 - $diskFree / $diskTotal) * 100, 1),
             'load_1m' => $load[0],
@@ -190,7 +193,9 @@ class LocalProvisionerDriver implements ProvisionerDriver
 
         if (file_exists($pidFile)) {
             $pid = (int) file_get_contents($pidFile);
-            if ($pid > 0 && posix_kill($pid, 0)) {
+            // posix_* does not exist on Windows; there is no real process to
+            // signal there anyway, only the status marker below.
+            if ($pid > 0 && function_exists('posix_kill') && posix_kill($pid, 0)) {
                 posix_kill($pid, 15);
             }
             @unlink($pidFile);
@@ -284,7 +289,41 @@ class LocalProvisionerDriver implements ProvisionerDriver
     public function issueSslCertificate(SslCertificate $certificate): void
     {
         $hostname = $certificate->domain->hostname;
-        $dir = sys_get_temp_dir().'/portway-ssl-'.$certificate->id;
+
+        [$certificatePem, $privateKeyPem] = $this->generateSelfSignedCertificate($hostname);
+
+        $certificate->forceFill([
+            'issuer' => 'Portway Development CA (self-signed — not trusted by browsers)',
+            'certificate' => $certificatePem,
+            'private_key' => $privateKeyPem,
+            'chain' => null,
+            'issued_at' => now(),
+            'expires_at' => now()->addDays(90),
+        ])->save();
+    }
+
+    /**
+     * Uses PHP's own OpenSSL extension first, so this works on Windows and
+     * any machine without the `openssl` command-line tool on its PATH;
+     * the CLI is only a fallback (it can also add a subjectAltName).
+     *
+     * @return array{0: string, 1: string} [certificate PEM, private key PEM]
+     */
+    private function generateSelfSignedCertificate(string $hostname): array
+    {
+        if (function_exists('openssl_pkey_new')) {
+            $options = ['digest_alg' => 'sha256', 'private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA];
+
+            $key = @openssl_pkey_new($options);
+            $csr = $key ? @openssl_csr_new(['commonName' => $hostname], $key, $options) : false;
+            $x509 = $csr ? @openssl_csr_sign($csr, null, $key, 90, $options) : false;
+
+            if ($x509 && openssl_x509_export($x509, $certificatePem) && openssl_pkey_export($key, $privateKeyPem, null, $options)) {
+                return [$certificatePem, $privateKeyPem];
+            }
+        }
+
+        $dir = sys_get_temp_dir().'/portway-ssl-'.Str::random(12);
         @mkdir($dir, 0700, true);
 
         $keyPath = "{$dir}/privkey.pem";
@@ -300,24 +339,22 @@ class LocalProvisionerDriver implements ProvisionerDriver
             '-addext', "subjectAltName=DNS:{$hostname}",
         ]);
         $process->setTimeout(30);
-        $process->run();
 
-        if (! $process->isSuccessful() || ! file_exists($certPath)) {
-            throw new RuntimeException('Local self-signed certificate generation failed: '.$process->getErrorOutput());
+        try {
+            $process->run();
+
+            if (! $process->isSuccessful() || ! file_exists($certPath)) {
+                throw new RuntimeException('Local self-signed certificate generation failed: '.($process->getErrorOutput() ?: 'the PHP openssl extension and the openssl command are both unavailable.'));
+            }
+
+            return [file_get_contents($certPath), file_get_contents($keyPath)];
+        } catch (\Symfony\Component\Process\Exception\ExceptionInterface $e) {
+            throw new RuntimeException('Local self-signed certificate generation failed: '.$e->getMessage(), previous: $e);
+        } finally {
+            @unlink($keyPath);
+            @unlink($certPath);
+            @rmdir($dir);
         }
-
-        $certificate->forceFill([
-            'issuer' => 'Portway Development CA (self-signed — not trusted by browsers)',
-            'certificate' => file_get_contents($certPath),
-            'private_key' => file_get_contents($keyPath),
-            'chain' => null,
-            'issued_at' => now(),
-            'expires_at' => now()->addDays(90),
-        ])->save();
-
-        @unlink($keyPath);
-        @unlink($certPath);
-        @rmdir($dir);
     }
 
     public function revokeSslCertificate(SslCertificate $certificate): void
